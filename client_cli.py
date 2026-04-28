@@ -350,22 +350,72 @@ def execute_tool_call(workspace: Path, tool_name: str, args: dict) -> str:
     raise RuntimeError(f"Herramienta no soportada: {tool_name}")
 
 
-def parse_tool_call(text: str) -> dict | None:
-    raw = text.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return None
+def _validate_tool_dict(data: dict) -> dict | None:
+    """Valida que un dict sea una llamada de herramienta válida."""
     if isinstance(data, dict) and data.get("tool"):
         if "args" not in data or not isinstance(data.get("args"), dict):
             data["args"] = {}
         return data
     return None
 
-def api_call(method: str, url: str, api_key: str, payload: dict | None = None) -> dict:
+
+def extract_all_tool_calls(text: str) -> list[dict]:
+    """Extrae todos los JSON de herramientas embebidos en texto mixto.
+
+    Usa conteo de llaves para manejar correctamente JSON anidado,
+    por ejemplo write_file con args:{path, content}.
+    """
+    results = []
+    i = 0
+    while i < len(text):
+        # Busca el inicio de un objeto JSON que empiece con {"tool"
+        start = text.find('{"tool"', i)
+        if start == -1:
+            # Intenta variante con espacio: { "tool"
+            start = text.find('{ "tool"', i)
+        if start == -1:
+            break
+        # Recorre el texto contando profundidad de llaves
+        depth = 0
+        j = start
+        in_string = False
+        escape_next = False
+        while j < len(text):
+            ch = text[j]
+            if escape_next:
+                escape_next = False
+            elif ch == "\\" and in_string:
+                escape_next = True
+            elif ch == '"':
+                in_string = not in_string
+            elif not in_string:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start : j + 1]
+                        try:
+                            data = _validate_tool_dict(json.loads(candidate))
+                            if data:
+                                results.append(data)
+                        except Exception:
+                            pass
+                        i = j + 1
+                        break
+            j += 1
+        else:
+            # No se cerró el objeto, no hay más que buscar
+            break
+    return results
+
+
+def parse_tool_call(text: str) -> dict | None:
+    """Retorna el primer JSON de herramienta encontrado en el texto, o None."""
+    calls = extract_all_tool_calls(text)
+    return calls[0] if calls else None
+
+def api_call(method: str, url: str, api_key: str, payload: dict | None = None, timeout: int = 120) -> dict:
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -373,7 +423,7 @@ def api_call(method: str, url: str, api_key: str, payload: dict | None = None) -
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = request.Request(url=url, method=method, headers=headers, data=data)
     try:
-        with request.urlopen(req, timeout=120) as resp:
+        with request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
             return json.loads(raw) if raw else {}
     except error.HTTPError as exc:
@@ -564,14 +614,24 @@ def run_agent_turn(
     agent_system = {
         "role": "system",
         "content": (
-            "Eres un agente de codigo con herramientas locales. "
-            "Si necesitas usar herramienta, responde SOLO JSON con formato: "
-            '{"tool":"read_file|write_file|append_file|list_files|mkdir|search","args":{...}}. '
-            "Si ya terminaste, responde texto normal sin JSON."
+            "Eres un agente de codigo con acceso a herramientas locales del sistema de archivos.\n"
+            f"Tu workspace actual es: {workspace}\n"
+            "Todas las rutas que uses en 'args' deben ser RELATIVAS a ese workspace (ej: 'index.html', 'src/App.js').\n\n"
+            "HERRAMIENTAS DISPONIBLES (responde SOLO el JSON, sin texto antes ni despues):\n"
+            '- Crear/sobreescribir archivo: {"tool":"write_file","args":{"path":"nombre.ext","content":"contenido completo"}}\n'
+            '- Leer archivo: {"tool":"read_file","args":{"path":"nombre.ext"}}\n'
+            '- Agregar a archivo: {"tool":"append_file","args":{"path":"nombre.ext","content":"texto a agregar"}}\n'
+            '- Listar archivos: {"tool":"list_files","args":{"path":"."}}\n'
+            '- Crear carpeta: {"tool":"mkdir","args":{"path":"carpeta"}}\n'
+            '- Buscar texto: {"tool":"search","args":{"pattern":"texto","path":"."}}\n\n'
+            "REGLAS:\n"
+            "1. Puedes emitir varios JSON seguidos en una misma respuesta para ejecutar varias herramientas.\n"
+            "2. Cuando hayas terminado todas las acciones, responde con texto normal (sin JSON) para indicar que terminaste.\n"
+            "3. NO expliques lo que vas a hacer antes del JSON. Actua directamente."
         ),
     }
     working = history[:]
-    max_steps = 6
+    max_steps = 12  # Aumentado para soportar múltiples herramientas por turno
     for _ in range(max_steps):
         messages_to_send = [agent_system] + working[-max_context_messages:]
         payload = {
@@ -581,34 +641,41 @@ def run_agent_turn(
             "client_id": "cli-agent",
             "title": "Sesion Agent CLI",
         }
-        response = api_call("POST", f"{base_url}/chat/completions", api_key, payload)
+        response = api_call("POST", f"{base_url}/chat/completions", api_key, payload, timeout=300)
         assistant = (
             response.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
-        tool_call = parse_tool_call(assistant)
         working.append({"role": "assistant", "content": assistant})
-        if tool_call is None:
+
+        # Extrae todas las herramientas de la respuesta (el modelo puede incluir varias)
+        tool_calls = extract_all_tool_calls(assistant)
+        if not tool_calls:
+            # Sin herramientas: la respuesta es la final
             return assistant, working
 
-        tool_name = tool_call.get("tool", "")
-        args = tool_call.get("args", {})
-        if not auto_approve_tools:
-            decision = input(
-                paint(f"Herramienta solicitada: {tool_name} args={args} ¿ejecutar? [y/N]: ", COLOR_YELLOW)
-            ).strip().lower()
-            if decision not in ("y", "yes", "s", "si"):
-                result = "Ejecucion cancelada por usuario"
+        # Ejecuta todas las herramientas encontradas en orden
+        combined_results = []
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("tool", "")
+            args = tool_call.get("args", {})
+            if not auto_approve_tools:
+                decision = input(
+                    paint(f"Herramienta solicitada: {tool_name} args={args} ¿ejecutar? [y/N]: ", COLOR_YELLOW)
+                ).strip().lower()
+                if decision not in ("y", "yes", "s", "si"):
+                    result = "Ejecucion cancelada por usuario"
+                else:
+                    result = execute_tool_call(workspace, tool_name, args)
             else:
                 result = execute_tool_call(workspace, tool_name, args)
-        else:
-            result = execute_tool_call(workspace, tool_name, args)
+            print(paint(f"tool> {tool_name}", COLOR_CYAN))
+            combined_results.append(f"TOOL_RESULT {tool_name}: {result}")
 
-        tool_result = f"TOOL_RESULT {tool_name}: {result}"
-        print(paint(f"tool> {tool_name}", COLOR_CYAN))
-        working.append({"role": "user", "content": tool_result})
+        # Agrega todos los resultados como un único mensaje de contexto
+        working.append({"role": "user", "content": "\n".join(combined_results)})
 
     return "No se pudo finalizar: se alcanzo el maximo de pasos de agente.", working
 
@@ -657,7 +724,7 @@ def cmd_chat(args: argparse.Namespace) -> None:
 
     while True:
         try:
-            user_text = input(paint("\nTu > ", COLOR_BOLD + COLOR_GREEN)).strip()
+            user_text = input(paint("\nTu: ", COLOR_BOLD + COLOR_GREEN)).strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n{paint('Sesion finalizada.', COLOR_YELLOW)}")
             return
