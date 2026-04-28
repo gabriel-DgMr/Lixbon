@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro - LAN LLM</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      color: white;
+    }
+    .auth-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 2.5rem;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.5s ease-out;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .auth-card h2 {
+      color: white;
+      margin-bottom: 0.5rem;
+      justify-content: center;
+      font-size: 1.8rem;
+    }
+    .auth-card p.subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+    }
+    .auth-card label {
+      color: #cbd5e1;
+    }
+    .auth-card input {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: white;
+      transition: all 0.3s ease;
+    }
+    .auth-card input::placeholder { color: #64748b; }
+    .auth-card input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    .auth-card button {
+      width: 100%;
+      padding: 0.85rem;
+      margin-top: 0.5rem;
+      background: #6366f1;
+      border-radius: 8px;
+    }
+    .auth-card button:hover { background: #4f46e5; }
+    .auth-links {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .auth-links a {
+      color: #818cf8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .auth-links a:hover { text-decoration: underline; }
+    .error-msg {
+      display: none;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+    .field-hint {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: -0.75rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-card">
+    <h2>Crear Cuenta</h2>
+    <p class="subtitle">Regístrate para usar LAN LLM Gateway</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form id="registerForm">
+      <div>
+        <label for="username">Correo electrónico</label>
+        <input type="email" id="username" required placeholder="correo@ejemplo.com" autocomplete="email">
+      </div>
+      <div>
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" required placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password">
+      </div>
+      <div>
+        <label for="password2">Confirmar contraseña</label>
+        <input type="password" id="password2" required placeholder="Repite tu contraseña" minlength="6" autocomplete="new-password">
+      </div>
+      <button type="submit" id="submitBtn">Registrarse</button>
+    </form>
+
+    <div class="auth-links">
+      ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorMsg = document.getElementById('errorMsg');
+      const btn = document.getElementById('submitBtn');
+      const password = document.getElementById('password').value;
+      const password2 = document.getElementById('password2').value;
+
+      errorMsg.style.display = 'none';
+
+      // Validar coincidencia de contraseñas en el cliente
+      if (password !== password2) {
+        errorMsg.innerText = 'Las contraseñas no coinciden.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Cargando...';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: password
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || 'Error al registrarse');
+        }
+
+        // Redirigir al login tras registro exitoso
+        window.location.href = '/login';
+      } catch (err) {
+        errorMsg.innerText = err.message;
+        errorMsg.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Registrarse';
+      }
+    });
+  </script>
+</body>
+</html>
