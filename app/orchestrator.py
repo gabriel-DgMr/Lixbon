@@ -9,6 +9,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -250,9 +251,70 @@ class NodeOrchestrator:
         """
         url = f"{ollama_url.rstrip('/')}/api/chat"
         payload = {"model": model, "messages": messages, "stream": False}
-        resp = await async_client.post(url, json=payload)
+        resp = await async_client.post(url, json=payload, timeout=httpx.Timeout(300.0))
         resp.raise_for_status()
         return resp.json()
+
+    async def proxy_chat_stream(
+        self,
+        ollama_url: str,
+        model: str,
+        messages: list[dict],
+        async_client: httpx.AsyncClient,
+    ):
+        """
+        Envía la petición de chat y produce un generador SSE.
+        Envía keep-alive comments cada segundo mientras el modelo procesa,
+        evitando que Cloudflare u otros proxies corten la conexión por inactividad.
+        """
+        import asyncio
+
+        url = f"{ollama_url.rstrip('/')}/api/chat"
+        payload = {"model": model, "messages": messages, "stream": True}
+        chat_id = f"chatcmpl-{uuid.uuid4()}"
+
+        # Cliente propio para no interferir con el cliente compartido del gateway
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                response.raise_for_status()
+
+                last_keepalive = time.time()
+
+                async for chunk in response.aiter_lines():
+                    # Keep-alive: si el modelo tarda > 5s en producir un chunk,
+                    # enviamos un comentario SSE para que Cloudflare no corte la línea
+                    now = time.time()
+                    if now - last_keepalive >= 5:
+                        yield ": keep-alive\n\n"
+                        last_keepalive = now
+
+                    if not chunk:
+                        continue
+
+                    try:
+                        data = json.loads(chunk)
+                        content = data.get("message", {}).get("content", "")
+                        done = data.get("done", False)
+
+                        openai_chunk = {
+                            "id": chat_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": content} if not done else {},
+                                    "finish_reason": "stop" if done else None,
+                                }
+                            ],
+                        }
+                        last_keepalive = time.time()
+                        yield f"data: {json.dumps(openai_chunk)}\n\n"
+                    except Exception as e:
+                        logger.error(f"Error procesando chunk de Ollama: {e}")
+
+            yield "data: [DONE]\n\n"
 
     # ──────────────────────────────────────────
     # Información para endpoints de API

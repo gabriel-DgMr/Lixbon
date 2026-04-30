@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 import time
@@ -10,7 +11,7 @@ from typing import Any
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -419,6 +420,32 @@ async def chat_completions(payload: ChatCompletionRequest, user_data: dict[str, 
     nodo_elegido = orquestador.best_node_for_model(payload.model)
     started_at = time.perf_counter()
 
+    import logging as _log
+    _log.getLogger("uvicorn").info(f"[chat] modelo='{payload.model}' stream={payload.stream} nodo={nodo_elegido.get('id') if nodo_elegido else 'fallback-local'}")
+
+    if payload.stream:
+        # Generador único con manejo de error interno
+        async def _stream_con_fallback():
+            ollama_url = nodo_elegido["ollama_url"] if nodo_elegido else None
+            try:
+                if ollama_url:
+                    async for chunk in orquestador.proxy_chat_stream(
+                        ollama_url, payload.model,
+                        [m.model_dump() for m in payload.messages],
+                        http_client_chat,
+                    ):
+                        yield chunk
+                    return
+            except Exception as exc:
+                _log.getLogger("uvicorn").warning(f"[stream] Fallo en nodo ({exc}), usando fallback local")
+            # Fallback directo a Ollama local
+            async for chunk in ollama_chat_stream(payload.model, [m.model_dump() for m in payload.messages]):
+                yield chunk
+
+        return StreamingResponse(_stream_con_fallback(), media_type="text/event-stream")
+
+
+    # Modo Normal (Sin stream)
     if nodo_elegido:
         try:
             ollama_resp = await orquestador.proxy_chat(
@@ -592,3 +619,47 @@ async def ollama_chat(model: str, messages: list[dict[str, str]]) -> dict[str, A
         raise HTTPException(status_code=502, detail=f"Error de Ollama: {exc.response.text}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"No se pudo conectar con Ollama: {exc}") from exc
+
+async def ollama_chat_stream(model: str, messages: list[dict[str, str]]):
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    payload = {"model": model, "messages": messages, "stream": True}
+    chat_id = f"chatcmpl-{uuid.uuid4()}"
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
+        async with client.stream("POST", url, json=payload) as response:
+            response.raise_for_status()
+            last_keepalive = time.time()
+
+            async for chunk in response.aiter_lines():
+                # Keep-alive cada 5s para que Cloudflare no corte la conexión
+                now = time.time()
+                if now - last_keepalive >= 5:
+                    yield ": keep-alive\n\n"
+                    last_keepalive = now
+
+                if not chunk:
+                    continue
+                try:
+                    data = json.loads(chunk)
+                    content = data.get("message", {}).get("content", "")
+                    done = data.get("done", False)
+
+                    openai_chunk = {
+                        "id": chat_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": content} if not done else {},
+                                "finish_reason": "stop" if done else None,
+                            }
+                        ],
+                    }
+                    last_keepalive = time.time()
+                    yield f"data: {json.dumps(openai_chunk)}\n\n"
+                except Exception:
+                    pass
+
+        yield "data: [DONE]\n\n"
