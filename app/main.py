@@ -125,6 +125,16 @@ def api_key_required(authorization: str | None = Header(default=None)) -> dict[s
     enforce_rate_limit(token)
     return user_data
 
+
+def validate_model_access(user_data: dict[str, Any], requested_model: str) -> None:
+    """Lanza 403 si la key tiene modelo asignado y no coincide con el solicitado."""
+    key_model = user_data.get("key_model")
+    if key_model and key_model != requested_model:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Esta API key solo permite el modelo '{key_model}'. Solicitud: '{requested_model}'",
+        )
+
 def cookie_auth_required(session_token: str | None = Cookie(default=None), authorization: str | None = Header(default=None)) -> dict[str, Any]:
     token = session_token or get_bearer_token(authorization)
     if not token:
@@ -363,10 +373,22 @@ async def api_mejor_nodo(user_data: dict[str, Any] = Depends(cookie_auth_require
 async def models(user_data: dict[str, Any] = Depends(api_key_required)):
     return {"object": "list", "data": await fetch_models()}
 
+@app.get("/api/key/info")
+async def api_key_info(user_data: dict[str, Any] = Depends(api_key_required)):
+    """Devuelve el modelo vinculado a la API key actual (None = global)."""
+    return {
+        "user": user_data.get("username"),
+        "key_model": user_data.get("key_model"),
+    }
+
 @app.post("/api/keys")
 async def create_api_key_endpoint(payload: dict[str, Any], user_data: dict[str, Any] = Depends(cookie_auth_required)):
-    name = (payload.get("name") or "").strip() or "Nueva Key"
-    raw_key, key_data = create_api_key(name, user_data["id"])
+    name = (payload.get("name") or "").strip()
+    model = (payload.get("model") or "").strip() or None
+    # Si no hay nombre, usar el modelo como nombre; si tampoco hay modelo, usar etiqueta genérica
+    if not name:
+        name = model or "Nueva Key"
+    raw_key, key_data = create_api_key(name, user_data["id"], model)
     return {"api_key": raw_key, "data": key_data}
 
 @app.post("/api/chat")
@@ -407,6 +429,9 @@ async def api_chat(payload: UIChatRequest, user_data: dict[str, Any] = Depends(c
 
 @app.post("/v1/chat/completions")
 async def chat_completions(payload: ChatCompletionRequest, user_data: dict[str, Any] = Depends(api_key_required)):
+
+    # Verificar que el modelo del request coincida con el vinculado a la key
+    validate_model_access(user_data, payload.model)
 
     conv_id = payload.conversation_id or str(uuid.uuid4())
     ensure_conversation(conv_id, user_data["id"], payload.title, payload.client_id)
@@ -514,6 +539,9 @@ async def api_status(user_data: dict[str, Any] = Depends(cookie_auth_required)):
 
 @app.post("/v1/completions")
 async def completions(payload: CompletionRequest, user_data: dict[str, Any] = Depends(api_key_required)):
+
+    # Verificar que el modelo del request coincida con el vinculado a la key
+    validate_model_access(user_data, payload.model)
 
     conv_id = payload.conversation_id or str(uuid.uuid4())
     ensure_conversation(conv_id, user_data["id"], payload.title, payload.client_id)

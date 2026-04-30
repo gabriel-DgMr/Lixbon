@@ -126,12 +126,22 @@
           <!-- SECCION: API KEYS -->
           <div id="keys" class="section-content">
             <section class="panel">
-              <h2><i data-lucide="key-round"></i> Generar API Key</h2>
-              <p class="muted" style="margin-bottom: 1.5rem;">Crea un acceso único para un equipo o integración en tu red.</p>
+              <h2><i data-lucide="key-round"></i> Generar API Key por Modelo</h2>
+              <p class="muted" style="margin-bottom: 1.5rem;">Crea una key vinculada a un modelo específico. Solo funcionará con ese modelo.</p>
               <form id="key-form" style="max-width: 500px;">
-                <label for="key-name">Identificador del equipo / proyecto</label>
+                <label for="key-model">Modelo</label>
+                <select id="key-model" required style="margin-bottom: 0.75rem;">
+                  <option value="" disabled selected>Selecciona un modelo...</option>
+                  {% for model in models %}
+                  {% if not model.id.startswith('error:') %}
+                  <option value="{{ model.id }}">{{ model.id }}</option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+
+                <label for="key-name">Nombre de la key <span class="small muted">(autorrellena con el modelo, editable)</span></label>
                 <div style="display: flex; gap: 0.5rem;">
-                  <input id="key-name" type="text" required placeholder="Ej: Servidor Node.js" style="margin-bottom: 0;" />
+                  <input id="key-name" type="text" required placeholder="Ej: llama3.1:8b" style="margin-bottom: 0;" />
                   <button type="submit" style="width: auto; margin-bottom: 0;">Generar</button>
                 </div>
               </form>
@@ -150,7 +160,12 @@
                 <li>
                   <div>
                     <strong style="display: block; font-size: 0.95rem;">{{ key.name }}</strong>
-                    <span class="small muted">Creada: {{ key.created_at }}</span>
+                    {% if key.model %}
+                    <span class="badge badge-ok" style="background:#eff6ff; color:#1e40af; border:none; font-size:0.75rem; margin-bottom: 2px;">Modelo: {{ key.model }}</span>
+                    {% else %}
+                    <span class="badge" style="background:#f0fdf4; color:#15803d; border:none; font-size:0.75rem; margin-bottom: 2px;">Global (todos los modelos)</span>
+                    {% endif %}
+                    <span class="small muted" style="display:block;">Creada: {{ key.created_at }}</span>
                   </div>
                   <div class="key-actions">
                     <code>{{ key.masked_key }}</code>
@@ -394,13 +409,30 @@
         await copyToClipboard(text);
       }
 
+      // Autorrellena el nombre de la key al seleccionar un modelo
+      document.getElementById("key-model").addEventListener("change", (e) => {
+        const nameInput = document.getElementById("key-name");
+        if (!nameInput.dataset.manuallyEdited) {
+          nameInput.value = e.target.value;
+        }
+      });
+      document.getElementById("key-name").addEventListener("input", (e) => {
+        // Marca como editado manualmente solo si el usuario borra o cambia el contenido
+        e.target.dataset.manuallyEdited = e.target.value ? "1" : "";
+      });
+
       document.getElementById("key-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const name = document.getElementById("key-name").value.trim();
+        const model = document.getElementById("key-model").value;
+        if (!model) {
+          alert("Debes seleccionar un modelo.");
+          return;
+        }
         const r = await fetch("/api/keys", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, model }),
         });
         
         if (r.status === 401) {

@@ -51,6 +51,7 @@ def init_db() -> None:
                 key_hash TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1,
+                model TEXT,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             );
 
@@ -81,6 +82,10 @@ def init_db() -> None:
         )
         try:
             conn.execute("ALTER TABLE api_keys ADD COLUMN raw_key TEXT;")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE api_keys ADD COLUMN model TEXT;")
         except sqlite3.OperationalError:
             pass
         conn.commit()
@@ -120,19 +125,20 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
         return dict(row)
     return None
 
-def create_api_key(name: str, user_id: int) -> tuple[str, dict[str, Any]]:
+def create_api_key(name: str, user_id: int, model: str | None = None) -> tuple[str, dict[str, Any]]:
     raw_key = f"lan_{secrets.token_urlsafe(24)}"
     key_hash = hash_api_key(raw_key)
     created_at = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO api_keys(user_id, name, key_hash, raw_key, created_at, active) VALUES (?, ?, ?, ?, ?, 1)",
-            (user_id, name, key_hash, raw_key, created_at),
+            "INSERT INTO api_keys(user_id, name, key_hash, raw_key, created_at, active, model) VALUES (?, ?, ?, ?, ?, 1, ?)",
+            (user_id, name, key_hash, raw_key, created_at, model),
         )
         conn.commit()
         key_data = {
             "id": cur.lastrowid,
             "name": name,
+            "model": model,
             "active": True,
             "created_at": created_at,
         }
@@ -143,20 +149,21 @@ def list_api_keys(user_id: int | None = None) -> list[dict[str, Any]]:
     with get_conn() as conn:
         if user_id is not None:
             rows = conn.execute(
-                "SELECT id, name, key_hash, raw_key, created_at, active FROM api_keys WHERE user_id = ? ORDER BY id DESC",
+                "SELECT id, name, key_hash, raw_key, created_at, active, model FROM api_keys WHERE user_id = ? ORDER BY id DESC",
                 (user_id,)
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, key_hash, raw_key, created_at, active FROM api_keys ORDER BY id DESC"
+                "SELECT id, name, key_hash, raw_key, created_at, active, model FROM api_keys ORDER BY id DESC"
             ).fetchall()
-            
+
     result = []
     for row in rows:
         result.append(
             {
                 "id": row["id"],
                 "name": row["name"],
+                "model": row["model"],
                 "masked_key": f"lan_...{row['key_hash'][-6:]}",
                 "raw_key": row["raw_key"],
                 "active": bool(row["active"]),
@@ -167,17 +174,21 @@ def list_api_keys(user_id: int | None = None) -> list[dict[str, Any]]:
 
 
 def validate_api_key(raw_key: str) -> dict[str, Any] | None:
-    """Devuelve los datos del usuario si la key es valida."""
+    """Devuelve los datos del usuario (y modelo vinculado) si la key es valida."""
     if not raw_key:
         return None
     key_hash = hash_api_key(raw_key)
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT user_id FROM api_keys WHERE key_hash = ? AND active = 1", (key_hash,)
+            "SELECT user_id, model FROM api_keys WHERE key_hash = ? AND active = 1", (key_hash,)
         ).fetchone()
-        
+
     if row:
-        return get_user_by_id(row["user_id"])
+        user = get_user_by_id(row["user_id"])
+        if user:
+            # Adjunta el modelo vinculado a la key (None = global, sin restriccion)
+            user["key_model"] = row["model"]
+        return user
     return None
 
 

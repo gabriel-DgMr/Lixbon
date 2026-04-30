@@ -60,9 +60,10 @@ MODEL_COMPLETIONS: list[str] = []
 
 def default_config() -> dict:
     return {
-        "base_url": DEFAULT_BASE_URL,
+        "base_url": "https://datacentgbx.online/v1",
         "api_key": "",
         "model": "",
+        "key_model": "",  # Si está definido, la key es de modelo especifico (no se puede cambiar)
         "max_context_messages": 12,
         "mode": "ask",
         "workspace": str(Path.cwd()),
@@ -573,50 +574,127 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 
 def cmd_setup(_: argparse.Namespace) -> None:
-    cfg = load_config()
-    print(paint("Configuracion inicial LAN LLM CLI", COLOR_BOLD + COLOR_CYAN))
-    
-    base_url = prompt_value("Base URL", cfg.get("base_url") or DEFAULT_BASE_URL, required=True).rstrip("/")
-    cfg["base_url"] = base_url
-    server_base = base_url.rsplit("/v1", 1)[0] if base_url.endswith("/v1") else base_url
-    
-    print(paint("\nAutenticacion requerida.", COLOR_YELLOW))
-    action = prompt_value("¿Que deseas hacer? (login/register)", "login", required=True).lower()
-    
-    username = prompt_value("Usuario", "", required=True)
     import getpass
-    password = getpass.getpass("Contraseña: ")
-    
-    try:
-        endpoint = f"{server_base}/api/auth/{action}"
-        resp = auth_api_call("POST", endpoint, {"username": username, "password": password})
-        cfg["api_key"] = resp.get("api_key", "")
-        print(paint(f"¡{action.capitalize()} exitoso! API key guardada.", COLOR_GREEN))
-    except Exception as exc:
-        print(paint(f"Error en {action}: {exc}", COLOR_RED))
-        return
 
-    cfg["model"] = prompt_value("Modelo por defecto", cfg.get("model", ""), required=True)
-    cfg["mode"] = prompt_value("Modo por defecto (ask/agent)", cfg.get("mode", "ask"), required=True).lower()
-    approve = prompt_value(
-        "Auto aprobar herramientas en agent (on/off)",
-        "on" if cfg.get("auto_approve_tools") else "off",
-        required=True,
-    ).lower()
-    cfg["auto_approve_tools"] = approve in ("on", "true", "1", "yes", "si", "s")
-    raw_context = prompt_value(
-        "Maximo de mensajes de contexto",
-        str(cfg.get("max_context_messages", 12)),
-        required=True,
-    )
-    try:
-        cfg["max_context_messages"] = max(2, int(raw_context))
-    except ValueError:
-        cfg["max_context_messages"] = 12
+    FIXED_BASE_URL = "https://datacentgbx.online/v1"
+    SERVER_BASE = FIXED_BASE_URL.rsplit("/v1", 1)[0]
+
+    cfg = load_config()
+    cfg["base_url"] = FIXED_BASE_URL
+
+    # ---- Cabecera ----
+    print(paint(hr("="), COLOR_BLUE))
+    print(paint("  LAN LLM CLI — Configuracion", COLOR_BOLD + COLOR_CYAN))
+    print(paint(hr("="), COLOR_BLUE))
+    print()
+
+    # ---- Selector principal ----
+    print(paint("  ¿Como deseas conectarte?", COLOR_BOLD))
+    print(f"  {paint('1', COLOR_CYAN)}. Login con usuario y contraseña")
+    print(f"  {paint('2', COLOR_CYAN)}. Pegar una API key de modelo especifico")
+    print()
+    while True:
+        opcion = input(paint("  Elige [1/2]: ", COLOR_BOLD + COLOR_GREEN)).strip()
+        if opcion in ("1", "2"):
+            break
+        print(paint("  Opcion invalida. Escribe 1 o 2.", COLOR_RED))
+    print()
+
+    if opcion == "1":
+        # ---- Opcion 1: Login (acceso global) ----
+        print(paint("  ¿Iniciar sesion o registrarse?", COLOR_BOLD))
+        print(f"  {paint('1', COLOR_CYAN)}. Iniciar sesion")
+        print(f"  {paint('2', COLOR_CYAN)}. Crear cuenta nueva")
+        print()
+        while True:
+            acc_op = input(paint("  Elige [1/2]: ", COLOR_BOLD + COLOR_GREEN)).strip()
+            if acc_op in ("1", "2"):
+                break
+            print(paint("  Opcion invalida.", COLOR_RED))
+        action = "login" if acc_op == "1" else "register"
+        print()
+
+        username = input(paint("  Usuario: ", COLOR_BOLD + COLOR_GREEN)).strip()
+        password = getpass.getpass(paint("  Contraseña: ", COLOR_BOLD + COLOR_GREEN))
+        print()
+
+        try:
+            resp = auth_api_call("POST", f"{SERVER_BASE}/api/auth/{action}", {"username": username, "password": password})
+            session_key = resp.get("api_key", "")
+            print(paint(f"  ✓ {action.capitalize()} exitoso", COLOR_GREEN))
+        except Exception as exc:
+            print(paint(f"  Error: {exc}", COLOR_RED))
+            return
+
+        # Cargar modelos disponibles
+        print(paint("\n  Cargando modelos disponibles...", COLOR_DIM))
+        try:
+            model_data = api_call("GET", f"{FIXED_BASE_URL}/models", session_key, timeout=15)
+            modelos = [
+                str(m.get("id")) for m in model_data.get("data", [])
+                if m.get("id") and not str(m.get("id")).startswith("error:")
+            ]
+        except Exception as exc:
+            print(paint(f"  No se pudo obtener modelos: {exc}", COLOR_RED))
+            modelos = []
+
+        if modelos:
+            global MODEL_COMPLETIONS
+            MODEL_COMPLETIONS = modelos
+            print(paint("\n  Selecciona el modelo por defecto:", COLOR_BOLD))
+            modelo_elegido = pick_model_interactive("")
+            if not modelo_elegido:
+                modelo_elegido = modelos[0]
+        else:
+            print(paint("  Sin modelos disponibles. Escribe el nombre manualmente.", COLOR_YELLOW))
+            modelo_elegido = input(paint("  Modelo: ", COLOR_BOLD + COLOR_GREEN)).strip()
+
+        cfg["api_key"] = session_key
+        cfg["model"] = modelo_elegido
+        cfg["key_model"] = ""  # Key global, sin restriccion de modelo
+        print(paint(f"\n  ✓ Configuracion global. Modelo: {modelo_elegido}", COLOR_GREEN))
+
+    else:
+        # ---- Opcion 2: API key de modelo especifico ----
+        print(paint("  Pega la API key del modelo especifico (generada desde el dashboard):", COLOR_DIM))
+        raw_key = input(paint("  API key: ", COLOR_BOLD + COLOR_GREEN)).strip()
+        print()
+
+        if not raw_key:
+            print(paint("  API key vacia. Operacion cancelada.", COLOR_RED))
+            return
+
+        print(paint("  Verificando key con el servidor...", COLOR_DIM))
+        try:
+            info = api_call("GET", f"{SERVER_BASE}/api/key/info", raw_key, timeout=10)
+            modelo_vinculado = info.get("key_model") or ""
+        except Exception as exc:
+            print(paint(f"  No se pudo verificar la key: {exc}", COLOR_RED))
+            return
+
+        if not modelo_vinculado:
+            print(paint("  Esta key es global (sin modelo especifico asignado).", COLOR_YELLOW))
+            print(paint("  Para una key por modelo, genérala desde el dashboard en la seccion API Keys.", COLOR_DIM))
+            print()
+            modelo_elegido = input(paint("  Modelo (escribe el nombre exacto): ", COLOR_BOLD + COLOR_GREEN)).strip()
+            cfg["api_key"] = raw_key
+            cfg["model"] = modelo_elegido
+            cfg["key_model"] = ""
+        else:
+            cfg["api_key"] = raw_key
+            cfg["model"] = modelo_vinculado
+            cfg["key_model"] = modelo_vinculado  # Bloquea el modelo en el chat
+            print(paint(f"  ✓ Key vinculada al modelo: {paint(modelo_vinculado, COLOR_BOLD)}", COLOR_GREEN))
+            print(paint("  El modelo es fijo. No podras cambiarlo durante el chat.", COLOR_DIM))
+
+    # ---- Guardar (sin pedir modo ni tokens, los maneja el usuario dentro del chat) ----
     if "admin_token" in cfg:
         del cfg["admin_token"]
     save_config(cfg)
-    print(f"Configuracion guardada en: {CONFIG_FILE}")
+    print()
+    print(paint(f"  ✓ Configuracion guardada. Ejecuta 'lanllm' para iniciar.", COLOR_GREEN))
+    print(paint(hr("="), COLOR_BLUE))
+
 
 
 def cmd_status(_: argparse.Namespace) -> None:
@@ -761,12 +839,14 @@ def cmd_chat_fallback(args: argparse.Namespace) -> None:
     enable_windows_colors()
     setup_slash_completer()
     cfg = load_config()
-    base_url = cfg.get("base_url") or DEFAULT_BASE_URL
+    base_url = cfg.get("base_url") or "https://datacentgbx.online/v1"
     api_key = cfg.get("api_key") or ""
+    key_model_locked = cfg.get("key_model", "")  # Si tiene valor, el modelo es fijo
     selected_model = getattr(args, "model", None)
     client_id = getattr(args, "client_id", os.getenv("HOSTNAME", "cli-client"))
     title = getattr(args, "title", "Sesion CLI")
-    model = selected_model or cfg.get("model") or ""
+    # Si la key tiene modelo fijo, ese modelo tiene prioridad siempre
+    model = key_model_locked or selected_model or cfg.get("model") or ""
     max_context_messages = int(cfg.get("max_context_messages", 12))
     mode = cfg.get("mode", "ask")
     workspace = Path.cwd().resolve()
@@ -845,12 +925,18 @@ def cmd_chat_fallback(args: argparse.Namespace) -> None:
             print(paint(f"Auto approve tools: {'on' if auto_approve_tools else 'off'}", COLOR_CYAN))
             continue
         if user_text == "/model":
+            if key_model_locked:
+                print(paint(f"Modelo bloqueado: esta sesion solo permite '{key_model_locked}'", COLOR_RED))
+                continue
             selected = pick_model_interactive(model)
             if selected is not None:
                 model = selected
                 print(paint(f"Modelo cambiado a: {model}", COLOR_CYAN))
             continue
         if user_text.startswith("/model "):
+            if key_model_locked:
+                print(paint(f"Modelo bloqueado: esta sesion solo permite '{key_model_locked}'", COLOR_RED))
+                continue
             raw_model = user_text.split(" ", 1)[1].strip()
             matches = [m for m in MODEL_COMPLETIONS if raw_model.lower() in m.lower()]
             if len(matches) == 1:
@@ -1249,7 +1335,7 @@ def run_tui(args: argparse.Namespace, cfg: dict) -> None:
         def compose(self) -> ComposeResult:
             yield Header()
             with Container(id="sidebar"):
-                yield Label("[bold cyan] M-LAB TUI [/]", classes="info")
+                yield Label("[bold cyan] F-GBX [/]", classes="info")
                 yield Static("="*20)
                 yield Label(f"Modo: {self.app_mode}", id="lbl_mode", classes="info")
                 yield Label(f"Modelo: {self.app_model}", id="lbl_model", classes="info")
