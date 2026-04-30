@@ -15,6 +15,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from app.orchestrator import NodeOrchestrator
+
 from app.db import (
     create_api_key,
     ensure_conversation,
@@ -43,6 +45,7 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 http_client_fast: httpx.AsyncClient | None = None
 http_client_chat: httpx.AsyncClient | None = None
+orquestador: NodeOrchestrator = NodeOrchestrator()
 
 cors_origins = [origin.strip() for origin in ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
@@ -151,11 +154,14 @@ async def on_startup() -> None:
     init_db()
     http_client_fast = httpx.AsyncClient(timeout=10.0)
     http_client_chat = httpx.AsyncClient(timeout=120.0)
+    # Inicia el orquestador de nodos LAN en background
+    orquestador.iniciar()
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     global http_client_fast, http_client_chat
+    orquestador.detener()
     if http_client_fast is not None:
         await http_client_fast.aclose()
     if http_client_chat is not None:
@@ -337,6 +343,21 @@ Write-Host "  lanllm chat"
 async def api_usage(user_data: dict[str, Any] = Depends(cookie_auth_required)):
     return get_usage_summary(user_data["id"])
 
+
+@app.get("/api/nodes")
+async def api_nodos(user_data: dict[str, Any] = Depends(cookie_auth_required)):
+    """Lista todos los nodos con su estado y métricas actuales."""
+    return {"nodos": orquestador.estado_nodos()}
+
+
+@app.get("/api/nodes/best")
+async def api_mejor_nodo(user_data: dict[str, Any] = Depends(cookie_auth_required)):
+    """Muestra cuál sería el nodo elegido en este momento."""
+    nodo = orquestador.best_node()
+    if not nodo:
+        return {"nodo": None, "mensaje": "Sin nodos online. Se usará Ollama local."}
+    return {"nodo": nodo}
+
 @app.get("/v1/models")
 async def models(user_data: dict[str, Any] = Depends(api_key_required)):
     return {"object": "list", "data": await fetch_models()}
@@ -385,8 +406,6 @@ async def api_chat(payload: UIChatRequest, user_data: dict[str, Any] = Depends(c
 
 @app.post("/v1/chat/completions")
 async def chat_completions(payload: ChatCompletionRequest, user_data: dict[str, Any] = Depends(api_key_required)):
-    if payload.stream:
-        raise HTTPException(status_code=400, detail="stream=true aun no esta soportado")
 
     conv_id = payload.conversation_id or str(uuid.uuid4())
     ensure_conversation(conv_id, user_data["id"], payload.title, payload.client_id)
@@ -396,8 +415,27 @@ async def chat_completions(payload: ChatCompletionRequest, user_data: dict[str, 
         if last_msg.role == "user":
             save_message(conv_id, "user", last_msg.content, model=payload.model)
 
+    # Seleccionar nodo que tenga el modelo con más recursos libres
+    nodo_elegido = orquestador.best_node_for_model(payload.model)
     started_at = time.perf_counter()
-    ollama_resp = await ollama_chat(payload.model, [m.model_dump() for m in payload.messages])
+
+    if nodo_elegido:
+        try:
+            ollama_resp = await orquestador.proxy_chat(
+                nodo_elegido["ollama_url"],
+                payload.model,
+                [m.model_dump() for m in payload.messages],
+                http_client_chat,
+            )
+            origen = nodo_elegido["id"]
+        except Exception:
+            # Fallback al Ollama local si el nodo falla durante la petición
+            ollama_resp = await ollama_chat(payload.model, [m.model_dump() for m in payload.messages])
+            origen = "local-fallback"
+    else:
+        ollama_resp = await ollama_chat(payload.model, [m.model_dump() for m in payload.messages])
+        origen = "local"
+
     latency_ms = int((time.perf_counter() - started_at) * 1000)
 
     assistant_text = ollama_resp.get("message", {}).get("content", "")
@@ -420,6 +458,7 @@ async def chat_completions(payload: ChatCompletionRequest, user_data: dict[str, 
             "created": int(time.time()),
             "model": payload.model,
             "conversation_id": conv_id,
+            "node": origen,
             "choices": [
                 {
                     "index": 0,
@@ -448,15 +487,31 @@ async def api_status(user_data: dict[str, Any] = Depends(cookie_auth_required)):
 
 @app.post("/v1/completions")
 async def completions(payload: CompletionRequest, user_data: dict[str, Any] = Depends(api_key_required)):
-    if payload.stream:
-        raise HTTPException(status_code=400, detail="stream=true aun no esta soportado")
 
     conv_id = payload.conversation_id or str(uuid.uuid4())
     ensure_conversation(conv_id, user_data["id"], payload.title, payload.client_id)
     save_message(conv_id, "user", payload.prompt, model=payload.model)
 
+    # Seleccionar nodo con más recursos libres; si no hay, usar Ollama local
+    nodo_elegido = orquestador.best_node()
     started_at = time.perf_counter()
-    ollama_resp = await ollama_chat(payload.model, [{"role": "user", "content": payload.prompt}])
+
+    if nodo_elegido:
+        try:
+            ollama_resp = await orquestador.proxy_chat(
+                nodo_elegido["ollama_url"],
+                payload.model,
+                [{"role": "user", "content": payload.prompt}],
+                http_client_chat,
+            )
+            origen = nodo_elegido["id"]
+        except Exception:
+            ollama_resp = await ollama_chat(payload.model, [{"role": "user", "content": payload.prompt}])
+            origen = "local-fallback"
+    else:
+        ollama_resp = await ollama_chat(payload.model, [{"role": "user", "content": payload.prompt}])
+        origen = "local"
+
     latency_ms = int((time.perf_counter() - started_at) * 1000)
 
     assistant_text = ollama_resp.get("message", {}).get("content", "")
@@ -479,6 +534,7 @@ async def completions(payload: CompletionRequest, user_data: dict[str, Any] = De
             "created": int(time.time()),
             "model": payload.model,
             "conversation_id": conv_id,
+            "node": origen,
             "choices": [
                 {
                     "index": 0,
@@ -497,6 +553,12 @@ async def completions(payload: CompletionRequest, user_data: dict[str, Any] = De
 
 
 async def fetch_models() -> list[dict[str, Any]]:
+    # Si hay nodos online, usar sus modelos agregados
+    modelos_nodos = orquestador.todos_los_modelos()
+    if modelos_nodos:
+        return modelos_nodos
+
+    # Fallback: modelos del Ollama local
     url = f"{OLLAMA_BASE_URL}/api/tags"
     try:
         client = http_client_fast or httpx.AsyncClient(timeout=10.0)

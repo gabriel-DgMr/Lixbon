@@ -11,7 +11,6 @@ Capa API para exponer modelos de `Ollama` en una red LAN con:
 ## Requisitos
 - Python 3.10+.
 ## Levantar servidor
-
 ```bash
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```

@@ -18,7 +18,8 @@ except Exception:
     readline = None
 
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8000/v1"
+import socket as _socket
+DEFAULT_BASE_URL = f"http://{_socket.gethostname()}:8000/v1"
 CONFIG_DIR = Path.home() / ".lan-llm-cli"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 IS_WINDOWS = os.name == "nt"
@@ -251,7 +252,7 @@ def load_config() -> dict:
     if not CONFIG_FILE.exists():
         return default_config()
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
     except Exception:
         return default_config()
 
@@ -304,10 +305,32 @@ def tool_read_file(workspace: Path, rel_path: str) -> str:
 
 
 def tool_write_file(workspace: Path, rel_path: str, content: str) -> str:
+    import difflib
     target = resolve_safe_path(workspace, rel_path)
+    old_content = ""
+    is_new = not target.exists()
+    if not is_new:
+        old_content = target.read_text(encoding="utf-8", errors="replace")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    return f"Archivo escrito: {target.relative_to(workspace)} ({len(content)} chars)"
+    if is_new:
+        return f"[NEW] Archivo creado: {target.relative_to(workspace)} ({len(content)} chars)"
+    # Calcula diff entre contenido viejo y nuevo
+    diff_lines = list(difflib.unified_diff(
+        old_content.splitlines(),
+        content.splitlines(),
+        fromfile=f"{rel_path} (antes)",
+        tofile=f"{rel_path} (ahora)",
+        lineterm="",
+        n=2,
+    ))
+    if not diff_lines:
+        return f"[OK] Sin cambios: {target.relative_to(workspace)}"
+    # Limita el diff a 80 lineas para no saturar el contexto
+    diff_str = "\n".join(diff_lines[:80])
+    if len(diff_lines) > 80:
+        diff_str += f"\n... ({len(diff_lines) - 80} lineas mas)"
+    return f"[DIFF] {target.relative_to(workspace)}\n{diff_str}"
 
 
 def tool_append_file(workspace: Path, rel_path: str, content: str) -> str:
@@ -334,6 +357,48 @@ def tool_search(workspace: Path, pattern: str, rel_path: str = ".") -> str:
         return (exc.output or "").strip() or "(sin resultados)"
 
 
+def tool_delete_file(workspace: Path, rel_path: str) -> str:
+    target = resolve_safe_path(workspace, rel_path)
+    if not target.exists():
+        return f"No encontrado: {rel_path}"
+    if target.is_dir():
+        import shutil
+        shutil.rmtree(target)
+        return f"[DEL] Directorio eliminado: {rel_path}"
+    target.unlink()
+    return f"[DEL] Archivo eliminado: {rel_path}"
+
+
+def tool_rename_file(workspace: Path, src: str, dst: str) -> str:
+    source = resolve_safe_path(workspace, src)
+    dest = resolve_safe_path(workspace, dst)
+    if not source.exists():
+        return f"No encontrado: {src}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(dest)
+    return f"[MOVE] {src} -> {dst}"
+
+
+def tool_run_command(workspace: Path, command: str, timeout: int = 30) -> str:
+    """Ejecuta un comando de shell dentro del workspace."""
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        output = (result.stdout + result.stderr).strip()
+        prefix = f"[EXIT {result.returncode}] "
+        return prefix + (output[:8000] if output else "(sin salida)")
+    except subprocess.TimeoutExpired:
+        return f"[TIMEOUT] Comando excedio {timeout}s"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
 def execute_tool_call(workspace: Path, tool_name: str, args: dict) -> str:
     if tool_name == "list_files":
         return tool_list_files(workspace, args.get("path", "."))
@@ -347,6 +412,12 @@ def execute_tool_call(workspace: Path, tool_name: str, args: dict) -> str:
         return tool_mkdir(workspace, args.get("path", ""))
     if tool_name == "search":
         return tool_search(workspace, args.get("pattern", ""), args.get("path", "."))
+    if tool_name == "delete_file":
+        return tool_delete_file(workspace, args.get("path", ""))
+    if tool_name == "rename_file":
+        return tool_rename_file(workspace, args.get("src", ""), args.get("dst", ""))
+    if tool_name == "run_command":
+        return tool_run_command(workspace, args.get("command", ""), int(args.get("timeout", 30)))
     raise RuntimeError(f"Herramienta no soportada: {tool_name}")
 
 
@@ -527,11 +598,6 @@ def cmd_setup(_: argparse.Namespace) -> None:
 
     cfg["model"] = prompt_value("Modelo por defecto", cfg.get("model", ""), required=True)
     cfg["mode"] = prompt_value("Modo por defecto (ask/agent)", cfg.get("mode", "ask"), required=True).lower()
-    cfg["workspace"] = prompt_value(
-        "Workspace para modo agent",
-        cfg.get("workspace", str(Path.cwd())),
-        required=True,
-    )
     approve = prompt_value(
         "Auto aprobar herramientas en agent (on/off)",
         "on" if cfg.get("auto_approve_tools") else "off",
@@ -566,7 +632,7 @@ def cmd_status(_: argparse.Namespace) -> None:
     print(f"- Modelo por defecto: {cfg.get('model') or 'no configurado'}")
     print(f"- Max context mensajes: {cfg.get('max_context_messages', 12)}")
     print(f"- Modo: {cfg.get('mode', 'ask')}")
-    print(f"- Workspace: {cfg.get('workspace', str(Path.cwd()))}")
+    print(f"- Workspace (CWD): {Path.cwd()}")
     print(f"- Auto approve tools: {'on' if cfg.get('auto_approve_tools') else 'off'}")
 
 
@@ -614,20 +680,31 @@ def run_agent_turn(
     agent_system = {
         "role": "system",
         "content": (
-            "Eres un agente de codigo con acceso a herramientas locales del sistema de archivos.\n"
-            f"Tu workspace actual es: {workspace}\n"
-            "Todas las rutas que uses en 'args' deben ser RELATIVAS a ese workspace (ej: 'index.html', 'src/App.js').\n\n"
-            "HERRAMIENTAS DISPONIBLES (responde SOLO el JSON, sin texto antes ni despues):\n"
-            '- Crear/sobreescribir archivo: {"tool":"write_file","args":{"path":"nombre.ext","content":"contenido completo"}}\n'
-            '- Leer archivo: {"tool":"read_file","args":{"path":"nombre.ext"}}\n'
-            '- Agregar a archivo: {"tool":"append_file","args":{"path":"nombre.ext","content":"texto a agregar"}}\n'
-            '- Listar archivos: {"tool":"list_files","args":{"path":"."}}\n'
-            '- Crear carpeta: {"tool":"mkdir","args":{"path":"carpeta"}}\n'
-            '- Buscar texto: {"tool":"search","args":{"pattern":"texto","path":"."}}\n\n'
-            "REGLAS:\n"
-            "1. Puedes emitir varios JSON seguidos en una misma respuesta para ejecutar varias herramientas.\n"
-            "2. Cuando hayas terminado todas las acciones, responde con texto normal (sin JSON) para indicar que terminaste.\n"
-            "3. NO expliques lo que vas a hacer antes del JSON. Actua directamente."
+            "Eres un agente de codigo experto. Ejecutas acciones sobre archivos usando herramientas JSON.\n"
+            f"Workspace: {workspace}\n"
+            "Rutas siempre RELATIVAS al workspace.\n\n"
+            "=== HERRAMIENTAS DISPONIBLES ===\n"
+            '{"tool":"list_files","args":{"path":"."}}\n'
+            '{"tool":"read_file","args":{"path":"archivo.txt"}}\n'
+            '{"tool":"write_file","args":{"path":"archivo.txt","content":"contenido completo"}}\n'
+            '{"tool":"append_file","args":{"path":"archivo.txt","content":"texto nuevo al final"}}\n'
+            '{"tool":"mkdir","args":{"path":"carpeta/subcarpeta"}}\n'
+            '{"tool":"search","args":{"pattern":"texto a buscar","path":"."}}\n'
+            '{"tool":"delete_file","args":{"path":"archivo.txt"}}\n'
+            '{"tool":"rename_file","args":{"src":"viejo.txt","dst":"nuevo.txt"}}\n'
+            '{"tool":"run_command","args":{"command":"npm install","timeout":60}}\n\n'
+            "=== REGLAS OBLIGATORIAS ===\n"
+            "1. Responde SIEMPRE con JSON puro para herramientas. NUNCA uses markdown (```) alrededor del JSON.\n"
+            "2. Para EDITAR un archivo existente: primero read_file para leer, luego write_file con el contenido COMPLETO modificado.\n"
+            "3. Puedes encadenar varias herramientas en una misma respuesta.\n"
+            "4. Cuando termines todas las acciones, responde con texto normal resumiendo lo que hiciste.\n"
+            "5. Los resultados de herramientas te llegan como TOOL_RESULT. Usalos para continuar.\n"
+            "6. Si la tarea involucra ejecutar comandos del sistema, usa run_command.\n\n"
+            "=== EJEMPLO: editar archivo existente ===\n"
+            "Paso 1 - Leer:\n"
+            '{"tool":"read_file","args":{"path":"src/app.js"}}\n'
+            "Paso 2 - Escribir con contenido modificado:\n"
+            '{"tool":"write_file","args":{"path":"src/app.js","content":"...contenido completo nuevo..."}}'
         ),
     }
     working = history[:]
@@ -680,7 +757,7 @@ def run_agent_turn(
     return "No se pudo finalizar: se alcanzo el maximo de pasos de agente.", working
 
 
-def cmd_chat(args: argparse.Namespace) -> None:
+def cmd_chat_fallback(args: argparse.Namespace) -> None:
     enable_windows_colors()
     setup_slash_completer()
     cfg = load_config()
@@ -692,7 +769,7 @@ def cmd_chat(args: argparse.Namespace) -> None:
     model = selected_model or cfg.get("model") or ""
     max_context_messages = int(cfg.get("max_context_messages", 12))
     mode = cfg.get("mode", "ask")
-    workspace = Path(cfg.get("workspace", str(Path.cwd()))).resolve()
+    workspace = Path.cwd().resolve()
     auto_approve_tools = bool(cfg.get("auto_approve_tools", False))
 
     if not api_key:
@@ -756,7 +833,6 @@ def cmd_chat(args: argparse.Namespace) -> None:
                 print(paint("Workspace invalido (no existe o no es carpeta).", COLOR_RED))
                 continue
             workspace = new_ws
-            cfg["workspace"] = str(workspace)
             print(paint(f"Workspace cambiado a: {workspace}", COLOR_CYAN))
             continue
         if user_text.startswith("/approve "):
@@ -846,7 +922,6 @@ def cmd_chat(args: argparse.Namespace) -> None:
             cfg["model"] = model
             cfg["api_key"] = api_key
             cfg["mode"] = mode
-            cfg["workspace"] = str(workspace)
             cfg["auto_approve_tools"] = auto_approve_tools
             cfg["max_context_messages"] = max_context_messages
             save_config(cfg)
@@ -881,10 +956,8 @@ def cmd_chat(args: argparse.Namespace) -> None:
             base_url = cfg.get("base_url") or DEFAULT_BASE_URL
             api_key = cfg.get("api_key") or ""
             model = cfg.get("model") or model
-            admin_token = cfg.get("admin_token", "")
             max_context_messages = int(cfg.get("max_context_messages", 12))
             mode = cfg.get("mode", "ask")
-            workspace = Path(cfg.get("workspace", str(Path.cwd()))).resolve()
             auto_approve_tools = bool(cfg.get("auto_approve_tools", False))
             print(paint("Configuracion recargada.", COLOR_CYAN))
             continue
@@ -956,6 +1029,655 @@ def cmd_chat(args: argparse.Namespace) -> None:
         print(f"{paint('IA >', COLOR_BOLD + COLOR_MAGENTA)}\n{format_assistant_output(assistant)}")
         print(paint(f"T: {elapsed_ms} ms", COLOR_DIM))
         print(paint(hr(), COLOR_DIM))
+
+
+def run_tui(args: argparse.Namespace, cfg: dict) -> None:
+    from textual.app import App, ComposeResult
+    from textual.containers import Horizontal, Vertical, VerticalScroll, Container
+    from textual.widgets import Header, Footer, Input, Static, Markdown, LoadingIndicator, Button, Label
+    from textual.screen import ModalScreen
+    from textual.binding import Binding
+    from textual import work
+    import queue
+    import threading
+    import uuid
+    from pathlib import Path
+    import pyperclip
+    import os
+
+    base_url = cfg.get("base_url") or DEFAULT_BASE_URL
+    api_key = cfg.get("api_key") or ""
+    model = getattr(args, "model", None) or cfg.get("model") or ""
+    max_context_messages = int(cfg.get("max_context_messages", 12))
+    mode = cfg.get("mode", "ask")
+    workspace = Path.cwd().resolve()
+    auto_approve_tools = bool(cfg.get("auto_approve_tools", False))
+    client_id = getattr(args, "client_id", os.getenv("HOSTNAME", "cli-client"))
+    title = getattr(args, "title", "Sesion CLI")
+
+    if not api_key or not model:
+        print("Falta API key o modelo. Ejecuta la CLI tradicional y usa '/setup'.")
+        return
+
+    class ToolApprovalScreen(ModalScreen[bool]):
+        CSS = """
+        ToolApprovalScreen {
+            align: center middle;
+        }
+        #dialog {
+            grid-size: 2;
+            grid-gutter: 1 2;
+            grid-rows: 1fr 3;
+            padding: 1 2;
+            width: 60;
+            height: 15;
+            border: thick $background 80%;
+            background: $surface;
+        }
+        #question {
+            column-span: 2;
+            height: 1fr;
+            width: 1fr;
+            content-align: center middle;
+        }
+        Button {
+            width: 100%;
+        }
+        """
+
+        def __init__(self, tool_name: str, args_dict: dict):
+            super().__init__()
+            self.tool_name = tool_name
+            self.args_dict = args_dict
+
+        def compose(self) -> ComposeResult:
+            yield Container(
+                Label(f"Agent solicita ejecutar:\nHerramienta: {self.tool_name}\nArgumentos: {self.args_dict}\n\n¿Aprobar?", id="question"),
+                Button("Aprobar", variant="success", id="btn_yes"),
+                Button("Rechazar", variant="error", id="btn_no"),
+                id="dialog",
+            )
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "btn_yes":
+                self.dismiss(True)
+            else:
+                self.dismiss(False)
+
+    class ChatMessage(Static):
+        def __init__(self, text: str, role: str):
+            super().__init__()
+            self.text = text
+            self.role = role
+
+        def compose(self) -> ComposeResult:
+            yield Markdown(self.text)
+
+    class AgentToolBox(Static):
+        def __init__(self):
+            super().__init__()
+            self.lines = []
+
+        def compose(self) -> ComposeResult:
+            yield Markdown("⏳ **Ejecutando herramientas...**", id="toolbox-content")
+
+        def on_mount(self) -> None:
+            self.add_class("-visible")
+
+        def add_tool_execution(self, tool_name: str, args_dict: dict):
+            args_str = str(args_dict)
+            if len(args_str) > 50:
+                args_str = args_str[:47] + "..."
+            self.lines.append(f"- **{tool_name}** `{args_str}`")
+            self.update_content()
+
+        def add_tool_result(self, tool_name: str, result: str):
+            # Si el resultado es un diff de write_file, renderizarlo como bloque diff coloreado
+            if result.startswith("[DIFF]"):
+                header = result.split("\n")[0]  # ej: "[DIFF] src/app.js"
+                diff_body = "\n".join(result.split("\n")[1:])
+                # Formatea el diff como bloque markdown para que se vea con colores
+                formatted = f"\n\n```diff\n{diff_body}\n```"
+                self.lines[-1] += f" ➔ {header}{formatted}"
+            elif result.startswith("[NEW]") or result.startswith("[DEL]") or result.startswith("[MOVE]") or result.startswith("[EXIT") or result.startswith("[OK]"):
+                self.lines[-1] += f" ➔ *{result}*"
+            else:
+                display_result = result.replace('\n', ' ')
+                if len(display_result) > 80:
+                    display_result = display_result[:77] + "..."
+                self.lines[-1] += f" ➔ *{display_result}*"
+            self.update_content()
+
+        def mark_done(self):
+            self.add_class("-done")
+            self.update_content(done=True)
+
+        def update_content(self, done: bool = False):
+            md = self.query_one("#toolbox-content", Markdown)
+            status = "✅ **Herramientas ejecutadas**" if done else "⏳ **Ejecutando herramientas...**"
+            content = f"{status}\n\n" + "\n".join(self.lines)
+            md.update(content)
+
+    class LanLLMApp(App):
+        CSS = """
+        Screen {
+            layout: horizontal;
+        }
+        #sidebar {
+            width: 30;
+            height: 100%;
+            dock: left;
+            background: $panel;
+            border-right: vkey $background;
+            padding: 1;
+        }
+        #main {
+            width: 1fr;
+            height: 100%;
+            layout: vertical;
+        }
+        #chat_area {
+            height: 1fr;
+            overflow-y: scroll;
+            padding: 1 2;
+        }
+        #input_area {
+            height: 3;
+            dock: bottom;
+            layout: horizontal;
+            border-top: solid $panel;
+        }
+        Input {
+            width: 1fr;
+        }
+        ChatMessage {
+            margin: 1 0;
+            padding: 1;
+            border: solid $accent;
+            background: $surface;
+        }
+        .user_msg {
+            border: solid $success;
+            background: $surface-lighten-1;
+        }
+        .loader {
+            display: none;
+            height: 3;
+            content-align: center middle;
+        }
+        .loader.-active {
+            display: block;
+        }
+        Label.info {
+            color: $text-muted;
+            margin-bottom: 1;
+        }
+        AgentToolBox {
+            margin: 1 0;
+            padding: 1;
+            border: solid $accent;
+            background: $surface;
+            opacity: 0;
+            transition: opacity 300ms linear, background 300ms linear;
+        }
+        AgentToolBox.-visible {
+            opacity: 1;
+        }
+        AgentToolBox.-done {
+            border: solid $success;
+            background: $surface-lighten-1;
+        }
+        """
+
+        BINDINGS = [
+            Binding("ctrl+q", "quit", "Salir"),
+            Binding("ctrl+l", "clear", "Limpiar"),
+            Binding("ctrl+c", "copy_last", "Copiar"),
+        ]
+
+        def __init__(self):
+            super().__init__()
+            self.conversation_id = str(uuid.uuid4())
+            self.history = []
+            self.app_mode = mode
+            self.app_model = model
+            self.app_workspace = workspace
+            self.app_auto_approve = auto_approve_tools
+            self.app_max_context = max_context_messages
+            self.approval_queue = queue.Queue()
+
+        def compose(self) -> ComposeResult:
+            yield Header()
+            with Container(id="sidebar"):
+                yield Label("[bold cyan] M-LAB TUI [/]", classes="info")
+                yield Static("="*20)
+                yield Label(f"Modo: {self.app_mode}", id="lbl_mode", classes="info")
+                yield Label(f"Modelo: {self.app_model}", id="lbl_model", classes="info")
+                yield Label(f"WS: {self.app_workspace.name}", id="lbl_ws", classes="info")
+                yield Label(f"Auto-Approve: {'On' if self.app_auto_approve else 'Off'}", id="lbl_approve", classes="info")
+                yield Static("="*20)
+                yield Label("Comandos Principales:\n/help (Ver todos)\n/mode <ask|agent>\n/model <nombre>\n/workspace <ruta>\n/status\n/usage\n/update\n/setup\n/save\n/clear\n/exit", classes="info")
+
+            with Vertical(id="main"):
+                yield VerticalScroll(id="chat_area")
+                yield LoadingIndicator(id="loader", classes="loader")
+                with Horizontal(id="input_area"):
+                    yield Input(placeholder="Escribe un mensaje o comando...", id="user_input")
+            yield Footer()
+
+        def on_mount(self) -> None:
+            self.query_one("#user_input").focus()
+            self.append_chat("¡Bienvenido al CLI Interactivo de M-LAB! (Modo TUI)\nEscribe `/help` para ver la lista completa de comandos.", "assistant")
+
+        def append_chat(self, text: str, role: str) -> None:
+            chat_area = self.query_one("#chat_area", VerticalScroll)
+            msg = ChatMessage(text, role)
+            if role == "user":
+                msg.add_class("user_msg")
+            chat_area.mount(msg)
+            chat_area.scroll_end(animate=False)
+            chat_area.scroll_end(animate=False)
+
+        async def action_clear(self) -> None:
+            chat_area = self.query_one("#chat_area", VerticalScroll)
+            await chat_area.query("ChatMessage").remove()
+            self.history = []
+            self.conversation_id = str(uuid.uuid4())
+            self.append_chat("Historial limpiado.", "assistant")
+
+        async def action_copy_last(self) -> None:
+            if not self.history or self.history[-1].get("role") != "assistant":
+                self.notify("No hay respuesta para copiar", severity="warning")
+                return
+            try:
+                pyperclip.copy(self.history[-1].get("content", ""))
+                self.notify("Respuesta copiada al portapapeles")
+            except Exception as e:
+                self.notify(f"Error al copiar: {e}", severity="error")
+
+        async def on_input_submitted(self, message: Input.Submitted) -> None:
+            text = message.value.strip()
+            if not text:
+                return
+            
+            inp = self.query_one("#user_input", Input)
+            inp.value = ""
+            
+            if text.startswith("/"):
+                await self.handle_slash_command(text)
+                return
+
+            self.append_chat(text, "user")
+            self.history.append({"role": "user", "content": text})
+            self.query_one("#loader").add_class("-active")
+            inp.disabled = True
+            
+            self.process_chat()
+
+        async def handle_slash_command(self, text: str) -> None:
+            nonlocal api_key
+            cmd = text.split(" ")[0].lower()
+            if cmd == "/help":
+                help_msg = (
+                    "**Comandos TUI soportados:**\n"
+                    "- `/mode <ask|agent>`: Cambiar modo\n"
+                    "- `/workspace <ruta>`: Definir carpeta para agente\n"
+                    "- `/approve <on|off>`: Confirmación de herramientas\n"
+                    "- `/model <nombre>`: Cambiar modelo actual\n"
+                    "- `/key <api_key|new>`: Cambiar API key o generar nueva\n"
+                    "- `/models`: Listar modelos disponibles\n"
+                    "- `/new`: Iniciar nueva conversación\n"
+                    "- `/history`: Ver resumen del historial actual\n"
+                    "- `/context <n>`: Ajustar tamaño del contexto\n"
+                    "- `/usage`: Ver uso global\n"
+                    "- `/update`: Actualizar CLI (info)\n"
+                    "- `/save`: Guardar configuración local\n"
+                    "- `/status`: Ver estado rápido\n"
+                    "- `/setup`: Configuración interactiva (info)\n"
+                    "- `/copy`: Copiar la última respuesta\n"
+                    "- `/clear`: Limpiar pantalla\n"
+                    "- `/exit`: Salir"
+                )
+                self.append_chat(help_msg, "assistant")
+            elif cmd == "/mode" and " " in text:
+                new_mode = text.split(" ", 1)[1].strip().lower()
+                if new_mode in ("ask", "agent"):
+                    self.app_mode = new_mode
+                    self.query_one("#lbl_mode", Label).update(f"Modo: {self.app_mode}")
+                    self.append_chat(f"*Modo cambiado a {self.app_mode}*", "assistant")
+            elif cmd == "/mode":
+                if " " not in text:
+                    self.append_chat("**Uso:** `/mode ask` o `/mode agent`", "assistant")
+                else:
+                    new_mode = text.split(" ", 1)[1].strip().lower()
+                    if new_mode in ("ask", "agent"):
+                        self.app_mode = new_mode
+                        self.query_one("#lbl_mode", Label).update(f"Modo: {self.app_mode}")
+                        self.append_chat(f"*Modo cambiado a {self.app_mode}*", "assistant")
+                    else:
+                        self.append_chat("**Error:** Modo inválido. Usa `/mode ask` o `/mode agent`", "assistant")
+            elif cmd == "/model":
+                if " " not in text:
+                    # Lista los modelos disponibles para elegir
+                    self.query_one("#loader").add_class("-active")
+                    self.fetch_models_for_selection()
+                else:
+                    self.app_model = text.split(" ", 1)[1].strip()
+                    self.query_one("#lbl_model", Label).update(f"Modelo: {self.app_model}")
+                    self.append_chat(f"*Modelo cambiado a {self.app_model}*", "assistant")
+            elif cmd == "/workspace":
+                if " " not in text:
+                    self.append_chat(f"**Workspace actual:** `{self.app_workspace}`\n\n**Uso:** `/workspace <ruta>`", "assistant")
+                else:
+                    raw_ws = text.split(" ", 1)[1].strip()
+                    new_ws = Path(raw_ws).expanduser().resolve()
+                    if new_ws.exists() and new_ws.is_dir():
+                        self.app_workspace = new_ws
+                        self.query_one("#lbl_ws", Label).update(f"WS: {self.app_workspace.name}")
+                        self.append_chat(f"*Workspace actualizado a: {self.app_workspace}*", "assistant")
+                    else:
+                        self.append_chat("**Error:** Ruta inválida o no es carpeta.", "assistant")
+            elif cmd == "/approve":
+                if " " not in text:
+                    estado = "On" if self.app_auto_approve else "Off"
+                    self.append_chat(f"**Auto-Approve actual:** {estado}\n\n**Uso:** `/approve on` o `/approve off`", "assistant")
+                else:
+                    raw_app = text.split(" ", 1)[1].strip().lower()
+                    if raw_app in ("on", "off"):
+                        self.app_auto_approve = (raw_app == "on")
+                        self.query_one("#lbl_approve", Label).update(f"Auto-Approve: {'On' if self.app_auto_approve else 'Off'}")
+                        self.append_chat(f"*Auto-Approve cambiado a: {raw_app}*", "assistant")
+                    else:
+                        self.append_chat("**Error:** Usa `/approve on` o `/approve off`", "assistant")
+            elif cmd == "/key":
+                if " " not in text:
+                    self.append_chat("**Uso:** `/key <api_key>` o `/key new` para generar una nueva.", "assistant")
+                else:
+                    new_key_val = text.split(" ", 1)[1].strip()
+                    if new_key_val.lower() == "new":
+                        try:
+                            admin_url = f"{base_url.rsplit('/v1', 1)[0]}/api/keys"
+                            resp = api_call("POST", admin_url, api_key, {"name": "CLI Auto Generated"})
+                            new_api_key = resp.get("api_key")
+                            cfg["api_key"] = new_api_key
+                            save_config(cfg)
+                            api_key = new_api_key
+                            self.append_chat("*Nueva API key generada y guardada.*", "assistant")
+                        except Exception as exc:
+                            self.append_chat(f"**Error al generar API key:** {exc}", "assistant")
+                    else:
+                        api_key = new_key_val
+                        cfg["api_key"] = api_key
+                        save_config(cfg)
+                        self.append_chat("*API key actualizada.*", "assistant")
+            elif cmd == "/context":
+                if " " not in text:
+                    self.append_chat(f"**Contexto actual:** {self.app_max_context} mensajes.\n\n**Uso:** `/context <n>`", "assistant")
+                else:
+                    try:
+                        self.app_max_context = max(2, int(text.split(" ", 1)[1].strip()))
+                        self.append_chat(f"*Contexto ajustado a {self.app_max_context} mensajes.*", "assistant")
+                    except ValueError:
+                        self.append_chat("**Error:** Valor inválido. Ejemplo: `/context 12`", "assistant")
+            elif cmd == "/history":
+                turns = len([m for m in self.history if m.get("role") == "user"])
+                self.append_chat(f"**Historial:** turnos={turns} mensajes={len(self.history)}", "assistant")
+            elif cmd == "/status":
+                masked = ""
+                k = cfg.get("api_key", "")
+                if k:
+                    masked = f"{k[:6]}...{k[-4:]}" if len(k) > 10 else "***"
+                self.append_chat(
+                    f"**Estado:**\n"
+                    f"- Modo: {self.app_mode}\n"
+                    f"- Modelo: {self.app_model}\n"
+                    f"- Workspace: {self.app_workspace}\n"
+                    f"- Auto Approve: {'On' if self.app_auto_approve else 'Off'}\n"
+                    f"- Max Context: {self.app_max_context}\n"
+                    f"- API Key: {masked or 'no configurada'}\n"
+                    f"- Base URL: {base_url}",
+                    "assistant"
+                )
+            elif cmd == "/new":
+                self.history = []
+                self.conversation_id = str(uuid.uuid4())
+                self.append_chat("*Nueva conversación iniciada.*", "assistant")
+            elif cmd == "/save":
+                cfg["mode"] = self.app_mode
+                cfg["model"] = self.app_model
+                cfg["workspace"] = str(self.app_workspace)
+                cfg["auto_approve_tools"] = self.app_auto_approve
+                cfg["max_context_messages"] = self.app_max_context
+                save_config(cfg)
+                self.append_chat("*Configuración guardada en archivo local.*", "assistant")
+            elif cmd == "/models":
+                self.query_one("#loader").add_class("-active")
+                self.fetch_models_bg()
+            elif cmd == "/usage":
+                self.query_one("#loader").add_class("-active")
+                self.fetch_usage_bg()
+            elif cmd == "/update":
+                self.append_chat("*Para actualizar la CLI, por favor sal (con /exit) y ejecuta `lanllm update` en la terminal normal.*", "assistant")
+            elif cmd == "/setup":
+                self.append_chat("*El comando `/setup` interactivo requiere salir de la TUI. Por favor usa `/exit` y ejecuta `lanllm setup`.*", "assistant")
+            elif cmd == "/copy":
+                await self.action_copy_last()
+            elif cmd == "/clear":
+                await self.action_clear()
+            elif cmd == "/exit":
+                self.exit()
+            else:
+                self.append_chat(f"Comando no reconocido: `{text}`. Escribe `/help` para ver la lista.", "assistant")
+
+        @work(thread=True)
+        def fetch_models_bg(self):
+            try:
+                data = api_call("GET", f"{base_url}/models", api_key)
+                models = data.get("data", [])
+                lines = ["**Modelos disponibles:**"] + [f"- {m.get('id')}" for m in models] if models else ["Sin modelos"]
+                self.call_from_thread(self.on_chat_success, "\n".join(lines))
+            except Exception as exc:
+                self.call_from_thread(self.on_chat_error, str(exc))
+
+        @work(thread=True)
+        def fetch_usage_bg(self):
+            try:
+                s_base = base_url.rsplit('/v1', 1)[0] if base_url.endswith("/v1") else base_url
+                usage_data = api_call("GET", f"{s_base}/api/usage", api_key)
+                msg = f"**Uso global:** conv={usage_data.get('conversations',0)} msg={usage_data.get('messages',0)} tokens={usage_data.get('total_tokens',0)}"
+                self.call_from_thread(self.on_chat_success, msg)
+            except Exception as exc:
+                self.call_from_thread(self.on_chat_error, str(exc))
+
+        @work(thread=True)
+        def fetch_models_for_selection(self):
+            try:
+                data = api_call("GET", f"{base_url}/models", api_key)
+                models = data.get("data", [])
+                if not models:
+                    self.call_from_thread(self.on_chat_success, "*No hay modelos disponibles.*")
+                    return
+                lines = ["**Modelos disponibles** (usa `/model <nombre>` para elegir):\n"]
+                for m in models:
+                    lines.append(f"- `{m.get('id')}`")
+                self.call_from_thread(self.on_chat_success, "\n".join(lines))
+            except Exception as exc:
+                self.call_from_thread(self.on_chat_error, str(exc))
+
+        @work(thread=True)
+        def process_chat(self) -> None:
+            try:
+                if self.app_mode == "agent":
+                    self.run_agent_turn_tui()
+                else:
+                    self.run_ask_turn()
+            except Exception as exc:
+                self.call_from_thread(self.on_chat_error, str(exc))
+
+        def on_chat_error(self, err: str) -> None:
+            self.append_chat(f"**Error:** {err}", "assistant")
+            if self.history and self.history[-1].get("role") == "user":
+                self.history.pop()
+            self.query_one("#loader").remove_class("-active")
+            inp = self.query_one("#user_input", Input)
+            inp.disabled = False
+            inp.focus()
+
+        def on_chat_success(self, assistant_text: str) -> None:
+            self.append_chat(assistant_text, "assistant")
+            self.query_one("#loader").remove_class("-active")
+            inp = self.query_one("#user_input", Input)
+            inp.disabled = False
+            inp.focus()
+
+        def run_ask_turn(self):
+            messages_to_send = self.history[-max_context_messages:]
+            payload = {
+                "model": self.app_model,
+                "messages": messages_to_send,
+                "conversation_id": self.conversation_id,
+                "client_id": client_id,
+                "title": title,
+            }
+            response = api_call("POST", f"{base_url}/chat/completions", api_key, payload)
+            assistant = response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            self.history.append({"role": "assistant", "content": assistant})
+            self.call_from_thread(self.on_chat_success, assistant)
+
+        def request_approval_sync(self, tool_name: str, args: dict) -> bool:
+            self.call_from_thread(self._show_approval_modal, tool_name, args)
+            return self.approval_queue.get()
+
+        def _show_approval_modal(self, tool_name: str, args: dict):
+            def callback(result: bool):
+                self.approval_queue.put(result)
+            self.push_screen(ToolApprovalScreen(tool_name, args), callback)
+
+        def mount_tool_box(self):
+            chat_area = self.query_one("#chat_area", VerticalScroll)
+            self.current_tool_box = AgentToolBox()
+            chat_area.mount(self.current_tool_box)
+            chat_area.scroll_end(animate=False)
+
+        def add_tool_execution_ui(self, tool_name: str, args_dict: dict):
+            if hasattr(self, "current_tool_box") and self.current_tool_box:
+                self.current_tool_box.add_tool_execution(tool_name, args_dict)
+                self.query_one("#chat_area", VerticalScroll).scroll_end(animate=False)
+
+        def add_tool_result_ui(self, tool_name: str, result: str):
+            if hasattr(self, "current_tool_box") and self.current_tool_box:
+                self.current_tool_box.add_tool_result(tool_name, result)
+
+        def mark_tool_box_done_ui(self):
+            if hasattr(self, "current_tool_box") and self.current_tool_box:
+                self.current_tool_box.mark_done()
+                self.current_tool_box = None
+
+        def run_agent_turn_tui(self):
+            agent_system = {
+                "role": "system",
+                "content": (
+                    "Eres un agente de codigo experto. Ejecutas acciones sobre archivos usando herramientas JSON.\n"
+                    f"Workspace: {self.app_workspace}\n"
+                    "Rutas siempre RELATIVAS al workspace.\n\n"
+                    "=== HERRAMIENTAS DISPONIBLES ===\n"
+                    '{"tool":"list_files","args":{"path":"."}}\n'
+                    '{"tool":"read_file","args":{"path":"archivo.txt"}}\n'
+                    '{"tool":"write_file","args":{"path":"archivo.txt","content":"contenido completo"}}\n'
+                    '{"tool":"append_file","args":{"path":"archivo.txt","content":"texto nuevo al final"}}\n'
+                    '{"tool":"mkdir","args":{"path":"carpeta/subcarpeta"}}\n'
+                    '{"tool":"search","args":{"pattern":"texto a buscar","path":"."}}\n'
+                    '{"tool":"delete_file","args":{"path":"archivo.txt"}}\n'
+                    '{"tool":"rename_file","args":{"src":"viejo.txt","dst":"nuevo.txt"}}\n'
+                    '{"tool":"run_command","args":{"command":"npm install","timeout":60}}\n\n'
+                    "=== REGLAS OBLIGATORIAS ===\n"
+                    "1. Responde SIEMPRE con JSON puro para herramientas. NUNCA uses markdown (```) alrededor del JSON.\n"
+                    "2. Para EDITAR un archivo existente: primero read_file para leer, luego write_file con el contenido COMPLETO modificado.\n"
+                    "3. Puedes encadenar varias herramientas en una misma respuesta.\n"
+                    "4. Si la tarea es compleja o ambigua, DEBES generar un plan paso a paso primero (SOLO texto, sin JSON). El usuario confirmara antes de ejecutar.\n"
+                    "5. Cuando termines todas las acciones, responde con texto normal resumiendo lo que hiciste.\n"
+                    "6. Los resultados de herramientas te llegan como TOOL_RESULT. Usalos para continuar.\n"
+                    "7. Si la tarea involucra ejecutar comandos del sistema (npm, pip, git, etc), usa run_command.\n"
+                ),
+            }
+            working = self.history[:]
+            max_steps = 12
+            for _ in range(max_steps):
+                messages_to_send = [agent_system] + working[-self.app_max_context:]
+                payload = {
+                    "model": self.app_model,
+                    "messages": messages_to_send,
+                    "conversation_id": self.conversation_id,
+                    "client_id": "cli-agent",
+                    "title": "Sesion Agent CLI",
+                }
+                response = api_call("POST", f"{base_url}/chat/completions", api_key, payload, timeout=300)
+                assistant = response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                working.append({"role": "assistant", "content": assistant})
+
+                tool_calls = extract_all_tool_calls(assistant)
+                if not tool_calls:
+                    self.history = working
+                    if hasattr(self, "current_tool_box") and self.current_tool_box:
+                        self.call_from_thread(self.mark_tool_box_done_ui)
+                    self.call_from_thread(self.on_chat_success, assistant)
+                    return
+
+                if not hasattr(self, "current_tool_box") or not self.current_tool_box:
+                    self.call_from_thread(self.mount_tool_box)
+                    import time
+                    time.sleep(0.05)
+
+                combined_results = []
+                for tool_call in tool_calls:
+                    tool_name = tool_call.get("tool", "")
+                    t_args = tool_call.get("args", {})
+                    
+                    self.call_from_thread(self.add_tool_execution_ui, tool_name, t_args)
+                    
+                    if not self.app_auto_approve:
+                        decision = self.request_approval_sync(tool_name, t_args)
+                        if not decision:
+                            result = "Ejecucion cancelada por usuario"
+                        else:
+                            result = execute_tool_call(self.app_workspace, tool_name, t_args)
+                    else:
+                        result = execute_tool_call(self.app_workspace, tool_name, t_args)
+                    
+                    self.call_from_thread(self.add_tool_result_ui, tool_name, result)
+                    combined_results.append(f"TOOL_RESULT {tool_name}: {result}")
+
+                working.append({"role": "user", "content": "\n".join(combined_results)})
+            
+            self.history = working
+            if hasattr(self, "current_tool_box") and self.current_tool_box:
+                self.call_from_thread(self.mark_tool_box_done_ui)
+            self.call_from_thread(self.on_chat_success, "No se pudo finalizar: se alcanzo maximo de pasos.")
+
+    app = LanLLMApp()
+    app.run()
+
+def ensure_textual_installed() -> bool:
+    try:
+        import textual
+        import pyperclip
+        return True
+    except ImportError:
+        print(paint("Instalando interfaz grafica moderna (Textual)...", COLOR_CYAN))
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "textual", "pyperclip"])
+            return True
+        except Exception as exc:
+            print(paint(f"Error autoinstalando TUI: {exc}", COLOR_RED))
+            return False
+
+def cmd_chat(args: argparse.Namespace) -> None:
+    cfg = load_config()
+    if ensure_textual_installed():
+        run_tui(args, cfg)
+    else:
+        print(paint("Iniciando modo fallback de consola (TUI no disponible).", COLOR_YELLOW))
+        cmd_chat_fallback(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
