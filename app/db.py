@@ -79,6 +79,10 @@ def init_db() -> None:
             );
             """
         )
+        try:
+            conn.execute("ALTER TABLE api_keys ADD COLUMN raw_key TEXT;")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
@@ -122,8 +126,8 @@ def create_api_key(name: str, user_id: int) -> tuple[str, dict[str, Any]]:
     created_at = now_iso()
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO api_keys(user_id, name, key_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
-            (user_id, name, key_hash, created_at),
+            "INSERT INTO api_keys(user_id, name, key_hash, raw_key, created_at, active) VALUES (?, ?, ?, ?, ?, 1)",
+            (user_id, name, key_hash, raw_key, created_at),
         )
         conn.commit()
         key_data = {
@@ -139,12 +143,12 @@ def list_api_keys(user_id: int | None = None) -> list[dict[str, Any]]:
     with get_conn() as conn:
         if user_id is not None:
             rows = conn.execute(
-                "SELECT id, name, key_hash, created_at, active FROM api_keys WHERE user_id = ? ORDER BY id DESC",
+                "SELECT id, name, key_hash, raw_key, created_at, active FROM api_keys WHERE user_id = ? ORDER BY id DESC",
                 (user_id,)
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, key_hash, created_at, active FROM api_keys ORDER BY id DESC"
+                "SELECT id, name, key_hash, raw_key, created_at, active FROM api_keys ORDER BY id DESC"
             ).fetchall()
             
     result = []
@@ -154,6 +158,7 @@ def list_api_keys(user_id: int | None = None) -> list[dict[str, Any]]:
                 "id": row["id"],
                 "name": row["name"],
                 "masked_key": f"lan_...{row['key_hash'][-6:]}",
+                "raw_key": row["raw_key"],
                 "active": bool(row["active"]),
                 "created_at": row["created_at"],
             }

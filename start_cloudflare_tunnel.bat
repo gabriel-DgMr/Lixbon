@@ -20,15 +20,13 @@ echo ==============================================================
 echo Iniciando Tunel de Cloudflare hacia tu API LAN (Puerto 8000)
 echo ==============================================================
 echo.
-echo ESPERA UNOS SEGUNDOS... BUSCA UNA LINEA QUE DIGA:
-echo "https://algo-inventado.trycloudflare.com"
-echo ESA SERA TU URL PUBLICA TEMPORAL.
+echo Tu API estara disponible de forma fija en: https://datacentgbx.online
 echo.
 echo Presiona CTRL+C en esta ventana cuando quieras cerrar el tunel.
 echo ==============================================================
 echo.
 
-:: Ejecuta el túnel hacia localhost:8000
-cloudflared.exe tunnel --url http://localhost:8000
+:: Ejecuta el tunel nombrado hacia localhost:8000
+cloudflared.exe tunnel --url http://localhost:8000 run ollama-tunnel
 
 pause

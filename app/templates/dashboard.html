@@ -154,7 +154,7 @@
                   </div>
                   <div class="key-actions">
                     <code>{{ key.masked_key }}</code>
-                    <button class="copy-btn" title="Copiar key enmascarada" onclick="copyToClipboard('{{ key.masked_key }}')"><i data-lucide="copy" style="width: 16px;"></i></button>
+                    <button class="copy-btn" title="Copiar API Key" onclick="copyToClipboard('{{ key.raw_key or key.masked_key }}')"><i data-lucide="copy" style="width: 16px;"></i></button>
                   </div>
                 </li>
                 {% else %}
@@ -297,6 +297,16 @@
                 </div>
               </div>
               
+              <div style="margin-top: 2rem; display: flex; align-items: center; justify-content: space-between; padding: 1.5rem; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid var(--border);">
+                <div>
+                  <h3 style="margin-bottom: 0.5rem;"><i data-lucide="download" style="width: 18px; display: inline; vertical-align: middle;"></i> Descarga directa del script</h3>
+                  <p class="small muted">Si prefieres no usar el instalador automatico, puedes descargar el script Python aquí.</p>
+                </div>
+                <a href="/install/client_cli.py" class="button" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500;">
+                  <i data-lucide="file-code-2" style="width: 16px;"></i> Descargar client_cli.py
+                </a>
+              </div>
+
               <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-color); border-radius: 8px; border: 1px dashed var(--border);">
                 <h3 style="margin-bottom: 0.5rem;"><i data-lucide="terminal" style="width: 18px; display: inline; vertical-align: middle;"></i> Uso después de instalar</h3>
                 <p class="small muted" style="margin-bottom: 1rem;">Abre una nueva terminal en el otro PC y ejecuta:</p>
