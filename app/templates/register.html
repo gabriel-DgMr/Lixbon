@@ -4,144 +4,213 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Registro - LAN LLM</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=2">
   <style>
     body {
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      background: radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 60%, #020617 100%);
       color: white;
+      font-family: 'Inter', sans-serif;
     }
-    .auth-card {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 2.5rem;
-      border-radius: 16px;
+    .auth-wrapper {
+      position: relative;
       width: 100%;
-      max-width: 400px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-      animation: slideUp 0.5s ease-out;
+      max-width: 420px;
+      padding: 20px;
+      z-index: 10;
+    }
+    /* Glow circles in background */
+    .glow-circle {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      z-index: -1;
+    }
+    .glow-1 { top: -50px; left: -50px; width: 200px; height: 200px; background: rgba(99, 102, 241, 0.3); }
+    .glow-2 { bottom: -50px; right: -50px; width: 250px; height: 250px; background: rgba(139, 92, 246, 0.2); }
+    
+    .auth-card {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 2.5rem 2rem;
+      border-radius: 20px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
     @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
+      from { opacity: 0; transform: translateY(30px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .auth-card h2 {
-      color: white;
-      margin-bottom: 0.5rem;
-      justify-content: center;
-      font-size: 1.8rem;
-    }
-    .auth-card p.subtitle {
+    .auth-header {
       text-align: center;
-      color: #94a3b8;
       margin-bottom: 2rem;
-      font-size: 0.9rem;
     }
-    .auth-card label {
+    .auth-header h2 {
+      color: #fff;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .auth-header p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+    
+    .input-group {
+      margin-bottom: 1.25rem;
+    }
+    .input-group label {
+      display: block;
       color: #cbd5e1;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 0.4rem;
     }
-    .auth-card input {
-      background: rgba(0,0,0,0.2);
-      border: 1px solid rgba(255,255,255,0.1);
+    .input-group input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: white;
-      transition: all 0.3s ease;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      outline: none;
     }
-    .auth-card input::placeholder { color: #64748b; }
-    .auth-card input:focus {
-      border-color: #6366f1;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    .input-group input::placeholder {
+      color: #475569;
     }
-    .auth-card button {
+    .input-group input:focus {
+      border-color: #818cf8;
+      background: rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+    }
+    
+    .submit-btn {
       width: 100%;
       padding: 0.85rem;
-      margin-top: 0.5rem;
-      background: #6366f1;
-      border-radius: 8px;
+      margin-top: 1rem;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
     }
-    .auth-card button:hover { background: #4f46e5; }
+    .submit-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    }
+    .submit-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
     .auth-links {
-      margin-top: 1.5rem;
+      margin-top: 1.75rem;
       text-align: center;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       color: #94a3b8;
     }
     .auth-links a {
       color: #818cf8;
       text-decoration: none;
       font-weight: 500;
+      transition: color 0.2s;
     }
-    .auth-links a:hover { text-decoration: underline; }
-    .error-msg {
-      display: none;
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #fca5a5;
-      padding: 0.75rem;
-      border-radius: 8px;
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
-      text-align: center;
-    }
-    .field-hint {
-      font-size: 0.75rem;
-      color: #64748b;
-      margin-top: -0.75rem;
-      margin-bottom: 1rem;
+    .auth-links a:hover {
+      color: #a5b4fc;
     }
   </style>
 </head>
 <body>
 
-  <div class="auth-card">
-    <h2>Crear Cuenta</h2>
-    <p class="subtitle">Regístrate para usar LAN LLM Gateway</p>
+  <!-- Contenedor para toasts -->
+  <div id="toast-container"></div>
 
-    <div class="error-msg" id="errorMsg"></div>
-
-    <form id="registerForm">
-      <div>
-        <label for="username">Correo electrónico</label>
-        <input type="email" id="username" required placeholder="correo@ejemplo.com" autocomplete="email">
+  <div class="auth-wrapper">
+    <div class="glow-circle glow-1"></div>
+    <div class="glow-circle glow-2"></div>
+    
+    <div class="auth-card">
+      <div class="auth-header">
+        <h2>Crear Cuenta</h2>
+        <p>Regístrate en LAN LLM Gateway</p>
       </div>
-      <div>
-        <label for="password">Contraseña</label>
-        <input type="password" id="password" required placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password">
+      
+      <form id="registerForm">
+        <div class="input-group">
+          <label for="username">Correo electrónico</label>
+          <input type="email" id="username" required placeholder="tu@correo.com" autocomplete="email">
+        </div>
+        <div class="input-group">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" required placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password">
+        </div>
+        <div class="input-group">
+          <label for="password2">Confirmar contraseña</label>
+          <input type="password" id="password2" required placeholder="Repite tu contraseña" minlength="6" autocomplete="new-password">
+        </div>
+        <button type="submit" id="submitBtn" class="submit-btn">Registrarse</button>
+      </form>
+      
+      <div class="auth-links">
+        ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>
       </div>
-      <div>
-        <label for="password2">Confirmar contraseña</label>
-        <input type="password" id="password2" required placeholder="Repite tu contraseña" minlength="6" autocomplete="new-password">
-      </div>
-      <button type="submit" id="submitBtn">Registrarse</button>
-    </form>
-
-    <div class="auth-links">
-      ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>
     </div>
   </div>
 
   <script>
+    // Sistema de Toasts
+    const TOAST_DURATION = 3500;
+    function showToast(message, type = 'info', title = '') {
+      const icons = {
+        success: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+        error:   `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>`,
+        warning: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>`,
+        info:    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+      };
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || icons.info}</span>
+        <div class="toast-message">
+          ${title ? `<div class="toast-title">${title}</div>` : ''}
+          ${message}
+        </div>
+        <div class="toast-progress" style="animation-duration:${TOAST_DURATION}ms;"></div>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('toast-out');
+        toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      }, TOAST_DURATION);
+    }
+
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const errorMsg = document.getElementById('errorMsg');
       const btn = document.getElementById('submitBtn');
       const password = document.getElementById('password').value;
       const password2 = document.getElementById('password2').value;
 
-      errorMsg.style.display = 'none';
-
       // Validar coincidencia de contraseñas en el cliente
       if (password !== password2) {
-        errorMsg.innerText = 'Las contraseñas no coinciden.';
-        errorMsg.style.display = 'block';
+        showToast('Las contraseñas no coinciden.', 'warning', 'Atención');
         return;
       }
 
       btn.disabled = true;
-      btn.innerText = 'Cargando...';
+      btn.innerText = 'Verificando...';
 
       try {
         const res = await fetch('/api/auth/register', {
@@ -158,12 +227,13 @@
           throw new Error(data.detail || 'Error al registrarse');
         }
 
+        showToast('Cuenta creada correctamente', 'success', '¡Registro exitoso!');
         // Redirigir al login tras registro exitoso
-        window.location.href = '/login';
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
       } catch (err) {
-        errorMsg.innerText = err.message;
-        errorMsg.style.display = 'block';
-      } finally {
+        showToast(err.message, 'error', 'Error al crear cuenta');
         btn.disabled = false;
         btn.innerText = 'Registrarse';
       }

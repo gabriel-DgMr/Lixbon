@@ -1,265 +1,342 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LAN LLM API Gateway</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <!-- Iconos Lucide -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-  </head>
-  <body>
-    <div class="app-layout">
-      <!-- Sidebar -->
-      <aside class="sidebar" id="sidebar">
-        <div class="brand">
-          <div class="brand-info">
-            <h1><i data-lucide="server"></i> LAN LLM</h1>
-            <p>Gateway v1.1</p>
-          </div>
-          <button class="close-sidebar" id="close-sidebar-btn" title="Cerrar menú">
-            <i data-lucide="x"></i>
-          </button>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LAN LLM API Gateway</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2" />
+  <!-- Iconos Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+  <!-- Contenedor para toasts -->
+  <div id="toast-container"></div>
+  
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-info">
+          <h1><i data-lucide="server"></i> LAN LLM</h1>
+          <p>Gateway v1.1</p>
         </div>
-        
-        <nav class="side-nav" id="main-nav">
-          <a href="#" data-target="overview" class="active"><i data-lucide="layout-dashboard"></i> Resumen</a>
-          <a href="#" data-target="keys"><i data-lucide="key"></i> API Keys</a>
-          <a href="#" data-target="chat"><i data-lucide="message-square"></i> Prueba de chat</a>
-          <a href="#" data-target="clients"><i data-lucide="users"></i> Equipos</a>
-          <a href="#" data-target="integrations"><i data-lucide="blocks"></i> Integraciones</a>
-          <a href="#" data-target="installer"><i data-lucide="terminal"></i> Instalador CLI</a>
-        </nav>
+        <button class="close-sidebar" id="close-sidebar-btn" title="Cerrar menú">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
 
-        <div class="side-panel">
-          <h3><i data-lucide="user"></i> Mi Cuenta</h3>
-          <p class="small" style="color: #cbd5e1; margin-bottom: 8px;">Usuario: <strong>{{ user.username }}</strong></p>
-          <a href="/logout" style="display: block; text-align: center; background: rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 0.5rem; text-decoration: none; color: #fff; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.2); margin-top: 10px;">
-            <i data-lucide="log-out" style="width: 14px; display: inline; vertical-align: middle;"></i> Cerrar sesión
-          </a>
-        </div>
-      </aside>
+      <nav class="side-nav" id="main-nav">
+        <a href="#" data-target="overview" class="active"><i data-lucide="layout-dashboard"></i> Resumen</a>
+        <a href="#" data-target="keys"><i data-lucide="key"></i> API Keys</a>
+        <a href="#" data-target="delegate"><i data-lucide="sparkles"></i> Delegación IA</a>
+        <a href="#" data-target="chat"><i data-lucide="message-square"></i> Prueba de chat</a>
+        <a href="#" data-target="clients"><i data-lucide="users"></i> Equipos</a>
+        <a href="#" data-target="integrations"><i data-lucide="blocks"></i> Integraciones</a>
+        <a href="#" data-target="installer"><i data-lucide="terminal"></i> Instalador CLI</a>
+      </nav>
 
-      <!-- Main Content -->
-      <main class="main-content" id="main-content">
-        <header class="top-header">
-          <button class="toggle-sidebar" id="toggle-sidebar-btn" title="Abrir menú">
-            <i data-lucide="menu"></i>
-          </button>
-        </header>
+      <div class="side-panel">
+        <h3><i data-lucide="user"></i> Mi Cuenta</h3>
+        <p class="small" style="color: #cbd5e1; margin-bottom: 8px;">Usuario: <strong>{{ user.username }}</strong></p>
+        <a href="/logout"
+          style="display: block; text-align: center; background: rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 0.5rem; text-decoration: none; color: #fff; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.2); margin-top: 10px;">
+          <i data-lucide="log-out" style="width: 14px; display: inline; vertical-align: middle;"></i> Cerrar sesión
+        </a>
+      </div>
+    </aside>
 
-        <div class="container">
-          
-          <!-- SECCION: RESUMEN -->
-          <div id="overview" class="section-content active">
-            <section class="panel hero">
-              <div>
-                <h2>LAN LLM API Gateway</h2>
-                <p class="muted">Convierte Ollama en un servicio API unificado para equipos de tu red local.</p>
-                <p class="small">Servidor Ollama: <strong>{{ ollama_url }}</strong></p>
-              </div>
-              <div class="hero-status">
-                {% if models and models[0].id and models[0].id[:6] == 'error:' %}
-                <span class="badge badge-error"><i data-lucide="x-circle" style="width: 14px;"></i> Ollama no disponible</span>
-                {% else %}
-                <span class="badge badge-ok"><i data-lucide="check-circle-2" style="width: 14px;"></i> Ollama conectado</span>
-                {% endif %}
-              </div>
-            </section>
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <header class="top-header">
+        <button class="toggle-sidebar" id="toggle-sidebar-btn" title="Abrir menú">
+          <i data-lucide="menu"></i>
+        </button>
+      </header>
 
-            <section class="grid-2">
-              <article class="quick-card">
-                <h3><i data-lucide="activity" style="width:18px; display:inline; vertical-align:middle; margin-right:4px;"></i> Estado del sistema</h3>
-                <p id="sys-status" class="muted">Consultando estado operativo...</p>
-                <p class="small muted" style="margin-bottom: 1rem;">Límite actual: <strong id="sys-rate" style="color:var(--primary);">{{ rate_limit_per_min }}</strong> req/min</p>
-                <button onclick="window.location.reload()" type="button" class="secondary"><i data-lucide="refresh-cw" style="width: 16px;"></i> Refrescar estado</button>
-              </article>
-              <article class="quick-card">
-                <h3><i data-lucide="zap" style="width:18px; display:inline; vertical-align:middle; margin-right:4px;"></i> Copiar Comando CLI</h3>
-                <p class="small muted" style="margin-bottom: 0.75rem;">Copia el instalador y pégalo en la terminal del otro equipo para conectarlo a este Gateway.</p>
-                <div class="btn-row">
-                  <button id="copy-linux-install" type="button" class="secondary" title="Copia comando bash"><i data-lucide="terminal-square" style="width:16px;"></i> Linux/Mac</button>
-                  <button id="copy-windows-install" type="button" class="secondary" title="Copia comando PowerShell"><i data-lucide="layout-grid" style="width:16px;"></i> Windows</button>
-                </div>
-                <p id="copy-feedback" class="small" style="margin-top: 0.5rem; text-align: center; height: 16px; color: #059669; font-weight: 500; transition: opacity 0.3s; opacity: 0;"></p>
-              </article>
-            </section>
+      <div class="container">
 
-            <section class="panel" style="margin-top: 1.5rem;">
-              <h2><i data-lucide="bar-chart-3"></i> Uso acumulado</h2>
-              <div class="stats-cards">
-                <div class="stat-card"><span>Conversaciones</span><strong id="s-conv">{{ usage.conversations }}</strong></div>
-                <div class="stat-card"><span>Mensajes</span><strong id="s-msg">{{ usage.messages }}</strong></div>
-                <div class="stat-card"><span>Prompt tokens</span><strong id="s-pt">{{ usage.prompt_tokens }}</strong></div>
-                <div class="stat-card"><span>Completion tokens</span><strong id="s-ct">{{ usage.completion_tokens }}</strong></div>
-                <div class="stat-card"><span>Total tokens</span><strong id="s-tt">{{ usage.total_tokens }}</strong></div>
-              </div>
-            </section>
-
-            <section class="panel">
-              <h2><i data-lucide="history"></i> Conversaciones recientes</h2>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Título</th>
-                      <th>Última act.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for conv in conversations %}
-                    <tr>
-                      <td><span class="badge badge-ok" style="background:#eff6ff; color:#1e40af; border:none;">{{ conv.client_id or 'LAN' }}</span></td>
-                      <td>{{ conv.title }}</td>
-                      <td class="muted small">{{ conv.updated_at }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="3" class="muted text-center">No hay conversaciones recientes.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-
-          <!-- SECCION: API KEYS -->
-          <div id="keys" class="section-content">
-            <section class="panel">
-              <h2><i data-lucide="key-round"></i> Generar API Key por Modelo</h2>
-              <p class="muted" style="margin-bottom: 1.5rem;">Crea una key vinculada a un modelo específico. Solo funcionará con ese modelo.</p>
-              <form id="key-form" style="max-width: 500px;">
-                <label for="key-model">Modelo</label>
-                <select id="key-model" required style="margin-bottom: 0.75rem;">
-                  <option value="" disabled selected>Selecciona un modelo...</option>
-                  {% for model in models %}
-                  {% if not model.id.startswith('error:') %}
-                  <option value="{{ model.id }}">{{ model.id }}</option>
-                  {% endif %}
-                  {% endfor %}
-                </select>
-
-                <label for="key-name">Nombre de la key <span class="small muted">(autorrellena con el modelo, editable)</span></label>
-                <div style="display: flex; gap: 0.5rem;">
-                  <input id="key-name" type="text" required placeholder="Ej: llama3.1:8b" style="margin-bottom: 0;" />
-                  <button type="submit" style="width: auto; margin-bottom: 0;">Generar</button>
-                </div>
-              </form>
-              
-              <div id="new-key-container" style="display: none; margin-top: 1.5rem;">
-                <p class="small" style="color: #047857; font-weight: 500; margin-bottom: 0.5rem;"><i data-lucide="check" style="width:16px; display:inline; vertical-align:middle;"></i> Key generada exitosamente. Cópiala ahora, no volverá a mostrarse completa.</p>
-                <div style="display: flex; gap: 0.5rem; align-items: center; background: #f1f5f9; padding: 0.5rem; border-radius: 8px; border: 1px solid #cbd5e1;">
-                  <code id="key-result-text" style="flex: 1; background: transparent; font-size: 1rem; color: #0f172a;"></code>
-                  <button type="button" onclick="copyNewKey()" class="secondary" style="width: auto; padding: 0.5rem; margin: 0;"><i data-lucide="copy" style="width:16px;"></i></button>
-                </div>
-              </div>
-
-              <h3 style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">Keys existentes</h3>
-              <ul class="keys-list">
-                {% for key in keys %}
-                <li>
-                  <div>
-                    <strong style="display: block; font-size: 0.95rem;">{{ key.name }}</strong>
-                    {% if key.model %}
-                    <span class="badge badge-ok" style="background:#eff6ff; color:#1e40af; border:none; font-size:0.75rem; margin-bottom: 2px;">Modelo: {{ key.model }}</span>
-                    {% else %}
-                    <span class="badge" style="background:#f0fdf4; color:#15803d; border:none; font-size:0.75rem; margin-bottom: 2px;">Global (todos los modelos)</span>
-                    {% endif %}
-                    <span class="small muted" style="display:block;">Creada: {{ key.created_at }}</span>
-                  </div>
-                  <div class="key-actions">
-                    <code>{{ key.masked_key }}</code>
-                    <button class="copy-btn" title="Copiar API Key" onclick="copyToClipboard('{{ key.raw_key or key.masked_key }}')"><i data-lucide="copy" style="width: 16px;"></i></button>
-                  </div>
-                </li>
-                {% else %}
-                <li class="muted">No hay keys generadas en la base de datos.</li>
-                {% endfor %}
-              </ul>
-            </section>
-          </div>
-
-          <!-- SECCION: PRUEBA CHAT -->
-          <div id="chat" class="section-content">
-            <section class="panel" style="max-width: 800px; margin: 0 auto;">
-              <h2><i data-lucide="bot"></i> Prueba interactiva</h2>
-              <p class="muted">Verifica que Ollama esté respondiendo correctamente desde el gateway.</p>
-              
+        <!-- SECCION: RESUMEN -->
+        <div id="overview" class="section-content active">
+          <section class="panel hero">
+            <div>
+              <h2>LAN LLM API Gateway</h2>
+              <p class="muted">Convierte Ollama en un servicio API unificado para equipos de tu red local.</p>
+              <p class="small">Servidor Ollama: <strong>{{ ollama_url }}</strong></p>
+            </div>
+            <div class="hero-status">
               {% if models and models[0].id and models[0].id[:6] == 'error:' %}
-              <div class="error-box">
-                <i data-lucide="alert-triangle"></i>
-                <div>
-                  <strong>Error de conexión</strong><br/>
-                  <span>No se pudo conectar a Ollama en <strong>{{ ollama_url }}</strong>.</span>
-                </div>
-              </div>
+              <span class="badge badge-error"><i data-lucide="x-circle" style="width: 14px;"></i> Ollama no
+                disponible</span>
+              {% else %}
+              <span class="badge badge-ok"><i data-lucide="check-circle-2" style="width: 14px;"></i> Ollama
+                conectado</span>
               {% endif %}
+            </div>
+          </section>
 
-              <form id="chat-form">
-                <label for="model">Modelo disponible</label>
-                <select id="model" required>
-                  {% for model in models %}
-                  <option value="{{ model.id }}">{{ model.id }}</option>
-                  {% endfor %}
-                </select>
-                
-                <label for="message">Mensaje / Prompt</label>
-                <textarea id="message" rows="4" required placeholder="Escribe tu prompt de prueba aquí..."></textarea>
-                
-                <button type="submit"><i data-lucide="send" style="width: 18px;"></i> Enviar request</button>
-              </form>
-              
-              <div id="chat-result" class="result" style="display: none; margin-top: 1.5rem;"></div>
-            </section>
-          </div>
-
-          <!-- SECCION: EQUIPOS -->
-          <div id="clients" class="section-content">
-            <section class="panel">
-              <h2><i data-lucide="users-2"></i> Equipos conectados</h2>
-              <p class="muted" style="margin-bottom: 1.5rem;">Métricas de uso segregadas por identificador de cliente (`client_id`).</p>
-              
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Identificador (client_id)</th>
-                      <th>Conversaciones</th>
-                      <th>Mensajes</th>
-                      <th>Tokens totales</th>
-                      <th>Última actividad</th>
-                    </tr>
-                  </thead>
-                  <tbody id="clients-body">
-                    {% for client in clients %}
-                    <tr>
-                      <td><strong>{{ client.client_id }}</strong></td>
-                      <td>{{ client.conversations }}</td>
-                      <td>{{ client.messages }}</td>
-                      <td><span style="color:var(--primary); font-weight:600;">{{ client.total_tokens }}</span></td>
-                      <td class="small muted">{{ client.last_activity or '-' }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                      <td colspan="5" style="text-align: center; color: var(--text-muted);">Aún no hay métricas de equipos.</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
+          <section class="grid-2">
+            <article class="quick-card">
+              <h3><i data-lucide="activity"
+                  style="width:18px; display:inline; vertical-align:middle; margin-right:4px;"></i> Estado del sistema
+              </h3>
+              <p id="sys-status" class="muted">Consultando estado operativo...</p>
+              <p class="small muted" style="margin-bottom: 1rem;">Límite actual: <strong id="sys-rate"
+                  style="color:var(--primary);">{{ rate_limit_per_min }}</strong> req/min</p>
+              <button onclick="window.location.reload()" type="button" class="secondary"><i data-lucide="refresh-cw"
+                  style="width: 16px;"></i> Refrescar estado</button>
+            </article>
+            <article class="quick-card">
+              <h3><i data-lucide="zap" style="width:18px; display:inline; vertical-align:middle; margin-right:4px;"></i>
+                Copiar Comando CLI</h3>
+              <p class="small muted" style="margin-bottom: 0.75rem;">Copia el instalador y pégalo en la terminal del
+                otro equipo para conectarlo a este Gateway.</p>
+              <div class="btn-row">
+                <button id="copy-linux-install" type="button" class="secondary" title="Copia comando bash"><i
+                    data-lucide="terminal-square" style="width:16px;"></i> Linux/Mac</button>
+                <button id="copy-windows-install" type="button" class="secondary" title="Copia comando PowerShell"><i
+                    data-lucide="layout-grid" style="width:16px;"></i> Windows</button>
               </div>
-            </section>
-          </div>
+              <p id="copy-feedback" class="small"
+                style="margin-top: 0.5rem; text-align: center; height: 16px; color: #059669; font-weight: 500; transition: opacity 0.3s; opacity: 0;">
+              </p>
+            </article>
+          </section>
 
-          <!-- SECCION: INTEGRACIONES -->
-          <div id="integrations" class="section-content">
-            <section class="panel">
-              <h2><i data-lucide="blocks"></i> Integraciones API</h2>
-              <p class="muted">El Gateway es 100% compatible con el formato de API de OpenAI.</p>
-              
-              <div class="integration-grid" style="margin-top: 1.5rem;">
-                <article class="integration-card">
-                  <h3><i data-lucide="terminal" style="width:18px; display:inline; vertical-align:middle;"></i> curl (Terminal)</h3>
-                  <pre><code>curl -X POST "http://IP_SERVIDOR:8000/v1/chat/completions" \
+          <section class="panel" style="margin-top: 1.5rem;">
+            <h2><i data-lucide="bar-chart-3"></i> Uso acumulado</h2>
+            <div class="stats-cards">
+              <div class="stat-card"><span>Conversaciones</span><strong id="s-conv">{{ usage.conversations }}</strong>
+              </div>
+              <div class="stat-card"><span>Mensajes</span><strong id="s-msg">{{ usage.messages }}</strong></div>
+              <div class="stat-card"><span>Prompt tokens</span><strong id="s-pt">{{ usage.prompt_tokens }}</strong>
+              </div>
+              <div class="stat-card"><span>Completion tokens</span><strong id="s-ct">{{ usage.completion_tokens
+                  }}</strong></div>
+              <div class="stat-card"><span>Total tokens</span><strong id="s-tt">{{ usage.total_tokens }}</strong></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2><i data-lucide="history"></i> Conversaciones recientes</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Título</th>
+                    <th>Última act.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for conv in conversations %}
+                  <tr>
+                    <td><span class="badge badge-ok" style="background:#eff6ff; color:#1e40af; border:none;">{{
+                        conv.client_id or 'LAN' }}</span></td>
+                    <td>{{ conv.title }}</td>
+                    <td class="muted small">{{ conv.updated_at }}</td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="3" class="muted text-center">No hay conversaciones recientes.</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- SECCION: API KEYS -->
+        <div id="keys" class="section-content">
+          <section class="panel">
+            <h2><i data-lucide="key-round"></i> Generar API Key por Modelo</h2>
+            <p class="muted" style="margin-bottom: 1.5rem;">Crea una key vinculada a un modelo específico. Solo
+              funcionará con ese modelo.</p>
+            <form id="key-form" style="max-width: 500px;">
+              <label for="key-model">Modelo</label>
+              <select id="key-model" required style="margin-bottom: 0.75rem;">
+                <option value="" disabled selected>Selecciona un modelo...</option>
+                {% for model in models %}
+                {% if not model.id.startswith('error:') %}
+                <option value="{{ model.id }}">{{ model.id }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
+
+              <label for="key-name">Nombre de la key <span class="small muted">(autorrellena con el modelo,
+                  editable)</span></label>
+              <div style="display: flex; gap: 0.5rem;">
+                <input id="key-name" type="text" required placeholder="Ej: llama3.1:8b" style="margin-bottom: 0;" />
+                <button type="submit" style="width: auto; margin-bottom: 0;">Generar</button>
+              </div>
+            </form>
+
+            <div id="new-key-container" style="display: none; margin-top: 1.5rem;">
+              <p class="small" style="color: #047857; font-weight: 500; margin-bottom: 0.5rem;"><i data-lucide="check"
+                  style="width:16px; display:inline; vertical-align:middle;"></i> Key generada exitosamente. Cópiala
+                ahora, no volverá a mostrarse completa.</p>
+              <div
+                style="display: flex; gap: 0.5rem; align-items: center; background: #f1f5f9; padding: 0.5rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+                <code id="key-result-text"
+                  style="flex: 1; background: transparent; font-size: 1rem; color: #0f172a;"></code>
+                <button type="button" onclick="copyNewKey()" class="secondary"
+                  style="width: auto; padding: 0.5rem; margin: 0;"><i data-lucide="copy"
+                    style="width:16px;"></i></button>
+              </div>
+            </div>
+
+            <h3 style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
+              Keys existentes
+              <button type="button" onclick="openRegenModal()" class="secondary"
+                style="float:right; font-size:0.8rem; padding:0.4rem 0.75rem; color:#dc2626; border-color:#fca5a5;"
+                title="Desactiva la clave actual inmediatamente">
+                <i data-lucide="rotate-cw" style="width:14px;"></i> Regenerar activa
+              </button>
+            </h3>
+            <ul class="keys-list">
+              {% for key in keys %}
+              <li>
+                <div>
+                  <strong style="display: block; font-size: 0.95rem;">{{ key.name }}</strong>
+                  {% if key.model %}
+                  <span class="badge badge-ok"
+                    style="background:#eff6ff; color:#1e40af; border:none; font-size:0.75rem; margin-bottom: 2px;">Modelo:
+                    {{ key.model }}</span>
+                  {% else %}
+                  <span class="badge"
+                    style="background:#f0fdf4; color:#15803d; border:none; font-size:0.75rem; margin-bottom: 2px;">Global
+                    (todos los modelos)</span>
+                  {% endif %}
+                  <span class="badge badge-{{ key.status }}" style="font-size:0.75rem; margin-bottom: 2px;">{{
+                    key.status }}</span>
+                  <span class="small muted" style="display:block;">Creada: {{ key.created_at[:10] if key.created_at else
+                    '-' }} | Expira: {{ key.expires_at[:10] if key.expires_at else 'No definido' }}</span>
+                </div>
+                <div class="key-actions">
+                  <code>{{ key.masked_key }}</code>
+                  <button class="copy-btn" title="Copiar API Key" data-rawkey="{{ key.raw_key or key.masked_key }}"
+                    onclick="copyKeyToClipboard(this.dataset.rawkey)"><i data-lucide="copy"
+                      style="width: 16px;"></i></button>
+                  <button class="copy-btn" title="Ver detalles" data-key='{{ key | tojson }}'
+                    onclick="openKeyModal(JSON.parse(this.dataset.key))"><i data-lucide="eye"
+                      style="width: 16px;"></i></button>
+                </div>
+              </li>
+              {% else %}
+              <li class="muted">No hay keys generadas en la base de datos.</li>
+              {% endfor %}
+            </ul>
+          </section>
+        </div>
+
+        <!-- SECCION: DELEGACIÓN IA -->
+        <div id="delegate" class="section-content">
+          <section class="panel" style="max-width: 800px; margin: 0 auto;">
+            <h2><i data-lucide="sparkles"></i> Delegación Inteligente</h2>
+            <p class="muted">Escribe tu solicitud en lenguaje natural. El sistema la clasifica automáticamente, busca
+              contexto similar en tu historial y la delega al modelo Ollama más adecuado.</p>
+
+            <form id="delegate-form" style="margin-top: 1.25rem;">
+              <label for="delegate-input">¿Qué necesitas hacer?</label>
+              <textarea id="delegate-input" rows="3" required
+                placeholder="Ej: Necesito desplegar mi app, mi API devuelve error 500, ¿cómo configuro variables de entorno?..."></textarea>
+              <button type="submit"><i data-lucide="brain-circuit" style="width:18px;"></i> Delegar solicitud</button>
+            </form>
+
+            <div id="delegate-result-box" style="display:none; margin-top: 1.5rem;">
+              <div id="delegate-classification-tags" class="classification-tags"></div>
+              <div id="delegate-result" class="delegate-result"></div>
+              <p id="delegate-meta" class="small muted" style="margin-top: 0.5rem; text-align:right;"></p>
+            </div>
+          </section>
+        </div>
+
+        <!-- SECCION: PRUEBA CHAT -->
+        <div id="chat" class="section-content">
+          <section class="panel" style="max-width: 800px; margin: 0 auto;">
+            <h2><i data-lucide="bot"></i> Prueba interactiva</h2>
+            <p class="muted">Verifica que Ollama esté respondiendo correctamente desde el gateway.</p>
+
+            {% if models and models[0].id and models[0].id[:6] == 'error:' %}
+            <div class="error-box">
+              <i data-lucide="alert-triangle"></i>
+              <div>
+                <strong>Error de conexión</strong><br />
+                <span>No se pudo conectar a Ollama en <strong>{{ ollama_url }}</strong>.</span>
+              </div>
+            </div>
+            {% endif %}
+
+            <form id="chat-form">
+              <label for="model">Modelo disponible</label>
+              <select id="model" required>
+                {% for model in models %}
+                <option value="{{ model.id }}">{{ model.id }}</option>
+                {% endfor %}
+              </select>
+
+              <label for="message">Mensaje / Prompt</label>
+              <textarea id="message" rows="4" required placeholder="Escribe tu prompt de prueba aquí..."></textarea>
+
+              <button type="submit"><i data-lucide="send" style="width: 18px;"></i> Enviar request</button>
+            </form>
+
+            <div id="chat-result" class="result" style="display: none; margin-top: 1.5rem;"></div>
+          </section>
+        </div>
+
+        <!-- SECCION: EQUIPOS -->
+        <div id="clients" class="section-content">
+          <section class="panel">
+            <h2><i data-lucide="users-2"></i> Equipos conectados</h2>
+            <p class="muted" style="margin-bottom: 1.5rem;">Métricas de uso segregadas por identificador de cliente
+              (`client_id`).</p>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Identificador (client_id)</th>
+                    <th>Conversaciones</th>
+                    <th>Mensajes</th>
+                    <th>Tokens totales</th>
+                    <th>Última actividad</th>
+                  </tr>
+                </thead>
+                <tbody id="clients-body">
+                  {% for client in clients %}
+                  <tr>
+                    <td><strong>{{ client.client_id }}</strong></td>
+                    <td>{{ client.conversations }}</td>
+                    <td>{{ client.messages }}</td>
+                    <td><span style="color:var(--primary); font-weight:600;">{{ client.total_tokens }}</span></td>
+                    <td class="small muted">{{ client.last_activity or '-' }}</td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted);">Aún no hay métricas de
+                      equipos.</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- SECCION: INTEGRACIONES -->
+        <div id="integrations" class="section-content">
+          <section class="panel">
+            <h2><i data-lucide="blocks"></i> Integraciones API</h2>
+            <p class="muted">El Gateway es 100% compatible con el formato de API de OpenAI.</p>
+
+            <div class="integration-grid" style="margin-top: 1.5rem;">
+              <article class="integration-card">
+                <h3><i data-lucide="terminal" style="width:18px; display:inline; vertical-align:middle;"></i> curl
+                  (Terminal)</h3>
+                <pre><code>curl -X POST "http://IP_SERVIDOR:8000/v1/chat/completions" \
   -H "Authorization: Bearer TU_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -267,246 +344,627 @@
     "messages":[{"role":"user","content":"Hola"}],
     "client_id":"pc-diseno-01"
   }'</code></pre>
-                </article>
-                <article class="integration-card">
-                  <h3><i data-lucide="workflow" style="width:18px; display:inline; vertical-align:middle;"></i> n8n / Make</h3>
-                  <ul style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                    <li><strong>Nodo:</strong> OpenAI Chat Model</li>
-                    <li><strong>Base URL:</strong> <code style="background:transparent; padding:0;">http://IP_SERVIDOR:8000/v1</code></li>
-                    <li><strong>API Key:</strong> Generada en este panel</li>
-                    <li><strong>Model:</strong> El nombre exacto de Ollama</li>
-                  </ul>
-                </article>
-                <article class="integration-card">
-                  <h3><i data-lucide="code-2" style="width:18px; display:inline; vertical-align:middle;"></i> Node.js / Python SDK</h3>
-                  <ul style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                    <li>Instancia el cliente oficial de OpenAI.</li>
-                    <li>Cambia <code>baseURL</code> apuntando al puerto 8000 del servidor.</li>
-                    <li>Añade el header <code>client_id</code> si deseas separar las métricas por aplicación.</li>
-                  </ul>
-                </article>
-              </div>
-            </section>
-          </div>
-
-          <!-- SECCION: INSTALADOR -->
-          <div id="installer" class="section-content">
-            <section class="panel">
-              <h2><i data-lucide="laptop"></i> Cliente CLI remoto</h2>
-              <p class="muted">Instala la interfaz de terminal en otros equipos de la red para que chateen usando este servidor.</p>
-              
-              <div class="grid-2" style="margin-top: 1.5rem;">
-                <div>
-                  <h3>Linux / macOS (bash)</h3>
-                  <div style="position: relative;">
-                    <pre><code id="cmd-linux-install">curl -fsSL {{ server_base_url }}/install.sh | bash</code></pre>
-                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('cmd-linux-install').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.1); color: white;"><i data-lucide="copy" style="width: 16px;"></i></button>
-                  </div>
-                </div>
-                <div>
-                  <h3>Windows (PowerShell)</h3>
-                  <div style="position: relative;">
-                    <pre><code id="cmd-win-install">irm {{ server_base_url }}/install.ps1 | iex</code></pre>
-                    <button class="copy-btn" onclick="copyToClipboard(document.getElementById('cmd-win-install').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.1); color: white;"><i data-lucide="copy" style="width: 16px;"></i></button>
-                  </div>
-                </div>
-              </div>
-              
-              <div style="margin-top: 2rem; display: flex; align-items: center; justify-content: space-between; padding: 1.5rem; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid var(--border);">
-                <div>
-                  <h3 style="margin-bottom: 0.5rem;"><i data-lucide="download" style="width: 18px; display: inline; vertical-align: middle;"></i> Descarga directa del script</h3>
-                  <p class="small muted">Si prefieres no usar el instalador automatico, puedes descargar el script Python aquí.</p>
-                </div>
-                <a href="/install/client_cli.py" class="button" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500;">
-                  <i data-lucide="file-code-2" style="width: 16px;"></i> Descargar client_cli.py
-                </a>
-              </div>
-
-              <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-color); border-radius: 8px; border: 1px dashed var(--border);">
-                <h3 style="margin-bottom: 0.5rem;"><i data-lucide="terminal" style="width: 18px; display: inline; vertical-align: middle;"></i> Uso después de instalar</h3>
-                <p class="small muted" style="margin-bottom: 1rem;">Abre una nueva terminal en el otro PC y ejecuta:</p>
-                <code style="display: block; margin-bottom: 0.5rem;">lanllm setup</code>
-                <code style="display: block;">lanllm chat</code>
-              </div>
-            </section>
-          </div>
-
+              </article>
+              <article class="integration-card">
+                <h3><i data-lucide="workflow" style="width:18px; display:inline; vertical-align:middle;"></i> n8n / Make
+                </h3>
+                <ul
+                  style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <li><strong>Nodo:</strong> OpenAI Chat Model</li>
+                  <li><strong>Base URL:</strong> <code
+                      style="background:transparent; padding:0;">http://IP_SERVIDOR:8000/v1</code></li>
+                  <li><strong>API Key:</strong> Generada en este panel</li>
+                  <li><strong>Model:</strong> El nombre exacto de Ollama</li>
+                </ul>
+              </article>
+              <article class="integration-card">
+                <h3><i data-lucide="code-2" style="width:18px; display:inline; vertical-align:middle;"></i> Node.js /
+                  Python SDK</h3>
+                <ul
+                  style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <li>Instancia el cliente oficial de OpenAI.</li>
+                  <li>Cambia <code>baseURL</code> apuntando al puerto 8000 del servidor.</li>
+                  <li>Añade el header <code>client_id</code> si deseas separar las métricas por aplicación.</li>
+                </ul>
+              </article>
+            </div>
+          </section>
         </div>
-      </main>
+
+        <!-- SECCION: INSTALADOR -->
+        <div id="installer" class="section-content">
+          <section class="panel">
+            <h2><i data-lucide="laptop"></i> Cliente CLI remoto</h2>
+            <p class="muted">Instala la interfaz de terminal en otros equipos de la red para que chateen usando este
+              servidor.</p>
+
+            <div class="grid-2" style="margin-top: 1.5rem;">
+              <div>
+                <h3>Linux / macOS (bash)</h3>
+                <div style="position: relative;">
+                  <pre><code id="cmd-linux-install">curl -fsSL {{ server_base_url }}/install.sh | bash</code></pre>
+                  <button class="copy-btn"
+                    onclick="copyToClipboard(document.getElementById('cmd-linux-install').textContent)"
+                    style="position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.1); color: white;"><i
+                      data-lucide="copy" style="width: 16px;"></i></button>
+                </div>
+              </div>
+              <div>
+                <h3>Windows (PowerShell)</h3>
+                <div style="position: relative;">
+                  <pre><code id="cmd-win-install">irm {{ server_base_url }}/install.ps1 | iex</code></pre>
+                  <button class="copy-btn"
+                    onclick="copyToClipboard(document.getElementById('cmd-win-install').textContent)"
+                    style="position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.1); color: white;"><i
+                      data-lucide="copy" style="width: 16px;"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style="margin-top: 2rem; display: flex; align-items: center; justify-content: space-between; padding: 1.5rem; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid var(--border);">
+              <div>
+                <h3 style="margin-bottom: 0.5rem;"><i data-lucide="download"
+                    style="width: 18px; display: inline; vertical-align: middle;"></i> Descarga directa del script</h3>
+                <p class="small muted">Si prefieres no usar el instalador automatico, puedes descargar el script Python
+                  aquí.</p>
+              </div>
+              <a href="/install/client_cli.py" class="button"
+                style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500;">
+                <i data-lucide="file-code-2" style="width: 16px;"></i> Descargar client_cli.py
+              </a>
+            </div>
+
+            <div
+              style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-color); border-radius: 8px; border: 1px dashed var(--border);">
+              <h3 style="margin-bottom: 0.5rem;"><i data-lucide="terminal"
+                  style="width: 18px; display: inline; vertical-align: middle;"></i> Uso después de instalar</h3>
+              <p class="small muted" style="margin-bottom: 1rem;">Abre una nueva terminal en el otro PC y ejecuta:</p>
+              <code style="display: block; margin-bottom: 0.5rem;">lanllm setup</code>
+              <code style="display: block;">lanllm chat</code>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- CONTENEDOR DE TOASTS -->
+  <div id="toast-container"></div>
+
+  <!-- MODAL: VER API KEY -->
+  <div class="modal-overlay" id="modal-key" role="dialog" aria-modal="true" aria-labelledby="modal-key-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-key-title"><i data-lucide="key-round" style="width:18px;"></i> Detalles de API Key</h3>
+        <button class="modal-close" onclick="closeModal('modal-key')" aria-label="Cerrar"><i data-lucide="x"
+            style="width:16px;"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-info-row">
+          <span>Estado</span>
+          <span id="mk-status"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Nombre</span>
+          <span id="mk-name"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Modelo vinculado</span>
+          <span id="mk-model"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Creada</span>
+          <span id="mk-created"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Expira</span>
+          <span id="mk-expires"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Último acceso</span>
+          <span id="mk-last"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Última IP</span>
+          <span id="mk-ip"></span>
+        </div>
+        <div class="modal-info-row">
+          <span>Permisos</span>
+          <span id="mk-scopes"></span>
+        </div>
+        <p style="font-size:0.85rem; font-weight:500; margin: 1rem 0 0.4rem;">Clave (enmascarada):</p>
+        <div class="key-display-box">
+          <code id="mk-masked"></code>
+          <button type="button" class="copy-btn" onclick="copyKeyToClipboard(document.getElementById('mk-raw').value)"
+            title="Copiar">
+            <i data-lucide="copy" style="width:16px;"></i>
+          </button>
+        </div>
+        <input type="hidden" id="mk-raw" />
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary" onclick="closeModal('modal-key')">Cerrar</button>
+        <button type="button" class="danger" onclick="closeModal('modal-key'); openRegenModal()"
+          style="font-size:0.88rem;" title="Desactiva la clave actual inmediatamente">
+          <i data-lucide="rotate-cw" style="width:14px;"></i> Regenerar
+        </button>
+      </div>
     </div>
+  </div>
 
-    <script>
-      // Iniciar iconos
-      lucide.createIcons();
+  <!-- MODAL: CONFIRMAR REGENERAR KEY -->
+  <div class="modal-overlay" id="modal-regen" role="dialog" aria-modal="true" aria-labelledby="modal-regen-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-regen-title"><i data-lucide="alert-triangle" style="width:18px; color:#dc2626;"></i> ¿Regenerar
+          API Key?</h3>
+        <button class="modal-close" onclick="closeModal('modal-regen')" aria-label="Cerrar"><i data-lucide="x"
+            style="width:16px;"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="warning-box">
+          <strong>⚠️ Impacto inmediato:</strong>
+          <ul>
+            <li>Tu clave actual quedará <strong>desactivada</strong> al instante.</li>
+            <li>Todos los servicios conectados dejarán de funcionar.</li>
+            <li>Deberás actualizar la clave en cada integración.</li>
+            <li>Esta acción <strong>no se puede deshacer</strong>.</li>
+          </ul>
+        </div>
+        <div class="confirm-input-wrap">
+          <label for="regen-confirm-input">Escribe <strong>REGENERAR</strong> para confirmar:</label>
+          <input type="text" id="regen-confirm-input" placeholder="REGENERAR" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary" onclick="closeModal('modal-regen')">Cancelar</button>
+        <button type="button" class="danger" id="regen-confirm-btn" disabled onclick="ejecutarRegeneracion()">
+          <i data-lucide="rotate-cw" style="width:14px;"></i> Regenerar
+        </button>
+      </div>
+    </div>
+  </div>
 
-      // UI Lógica: Sidebar
-      const sidebar = document.getElementById('sidebar');
-      const mainContent = document.getElementById('main-content');
-      const toggleBtn = document.getElementById('toggle-sidebar-btn');
-      const closeBtn = document.getElementById('close-sidebar-btn');
+  <!-- MODAL: ONBOARDING -->
+  <div class="modal-overlay" id="modal-onboarding" role="dialog" aria-modal="true" aria-labelledby="modal-ob-title">
+    <div class="modal" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 id="modal-ob-title"><i data-lucide="rocket" style="width:18px;"></i> Bienvenido a LAN LLM Gateway</h3>
+        <button class="modal-close" onclick="closeModal('modal-onboarding')" aria-label="Cerrar"><i data-lucide="x"
+            style="width:16px;"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="onboarding-progress">
+          <div class="onboarding-progress-bar" id="ob-progress-bar" style="width:25%;"></div>
+        </div>
+        <p class="small muted" id="ob-step-label" style="text-align:right; margin-bottom: 0.5rem;">Paso 1 de 4</p>
+        <ul class="onboarding-steps-index" id="ob-index"></ul>
+        <div class="onboarding-content" id="ob-content"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary" onclick="closeModal('modal-onboarding')"
+          style="margin-right:auto; font-size:0.85rem;">Saltar</button>
+        <button type="button" class="secondary" id="ob-prev-btn" onclick="obNavigate(-1)"><i data-lucide="arrow-left"
+            style="width:14px;"></i> Anterior</button>
+        <button type="button" id="ob-next-btn" onclick="obNavigate(1)">Siguiente <i data-lucide="arrow-right"
+            style="width:14px;"></i></button>
+      </div>
+    </div>
+  </div>
 
-      function toggleSidebar() {
-        sidebar.classList.toggle('collapsed');
-        mainContent.classList.toggle('expanded');
-      }
+  <script>
+    // Iniciar iconos
+    lucide.createIcons();
 
-      toggleBtn.addEventListener('click', toggleSidebar);
-      closeBtn.addEventListener('click', toggleSidebar);
+    // UI Lógica: Sidebar
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    const toggleBtn = document.getElementById('toggle-sidebar-btn');
+    const closeBtn = document.getElementById('close-sidebar-btn');
 
-      // En móvil, iniciar colapsado
-      if (window.innerWidth <= 768) {
-        sidebar.classList.add('collapsed');
-        mainContent.classList.add('expanded');
-      }
+    function toggleSidebar() {
+      sidebar.classList.toggle('collapsed');
+      mainContent.classList.toggle('expanded');
+    }
 
-      // UI Lógica: Pestañas (SPA)
-      const navLinks = document.querySelectorAll('#main-nav a');
-      const sections = document.querySelectorAll('.section-content');
+    toggleBtn.addEventListener('click', toggleSidebar);
+    closeBtn.addEventListener('click', toggleSidebar);
 
-      navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          // Actualizar nav
-          navLinks.forEach(l => l.classList.remove('active'));
-          link.classList.add('active');
-          
-          // Mostrar sección
-          const targetId = link.getAttribute('data-target');
-          sections.forEach(sec => sec.classList.remove('active'));
-          document.getElementById(targetId).classList.add('active');
+    // En móvil, iniciar colapsado
+    if (window.innerWidth <= 768) {
+      sidebar.classList.add('collapsed');
+      mainContent.classList.add('expanded');
+    }
 
-          // En móvil, cerrar sidebar al clickear
-          if (window.innerWidth <= 768) {
-            toggleSidebar();
-          }
-        });
-      });
+    // UI Lógica: Pestañas (SPA)
+    const navLinks = document.querySelectorAll('#main-nav a');
+    const sections = document.querySelectorAll('.section-content');
 
-      // Lógica Base: Utilidades y API
-      async function copyToClipboard(text, showToast = true) {
-        try {
-          if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-          } else {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-999999px";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            try { document.execCommand('copy'); } catch (e) { console.error(e); }
-            textArea.remove();
-          }
-          if (showToast) alert("Copiado al portapapeles");
-        } catch (err) {
-          console.error("Fallo al copiar", err);
-        }
-      }
-
-      async function copyNewKey() {
-        const text = document.getElementById("key-result-text").textContent;
-        await copyToClipboard(text);
-      }
-
-      // Autorrellena el nombre de la key al seleccionar un modelo
-      document.getElementById("key-model").addEventListener("change", (e) => {
-        const nameInput = document.getElementById("key-name");
-        if (!nameInput.dataset.manuallyEdited) {
-          nameInput.value = e.target.value;
-        }
-      });
-      document.getElementById("key-name").addEventListener("input", (e) => {
-        // Marca como editado manualmente solo si el usuario borra o cambia el contenido
-        e.target.dataset.manuallyEdited = e.target.value ? "1" : "";
-      });
-
-      document.getElementById("key-form").addEventListener("submit", async (e) => {
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
         e.preventDefault();
-        const name = document.getElementById("key-name").value.trim();
-        const model = document.getElementById("key-model").value;
-        if (!model) {
-          alert("Debes seleccionar un modelo.");
-          return;
-        }
-        const r = await fetch("/api/keys", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, model }),
-        });
-        
-        if (r.status === 401) {
-          alert("Tu sesión ha expirado.");
-          window.location.href = "/login";
-          return;
-        }
-        
-        const d = await r.json();
-        const container = document.getElementById("new-key-container");
-        document.getElementById("key-result-text").textContent = d.api_key;
-        container.style.display = "block";
-        document.getElementById("key-name").value = "";
-      });
+        // Actualizar nav
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
 
-      document.getElementById("chat-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const model = document.getElementById("model").value;
-        const resultBox = document.getElementById("chat-result");
-        resultBox.style.display = "block";
-        
-        if (model.startsWith("error:")) {
-          resultBox.textContent = "Ollama no está disponible aún.";
-          return;
-        }
-        
-        resultBox.textContent = "Procesando...";
-        const message = document.getElementById("message").value.trim();
-        const r = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, message }),
-        });
-        
-        if (r.status === 401) {
-          resultBox.textContent = "Acción bloqueada: tu sesión ha expirado.";
-          return;
-        }
-        
-        const d = await r.json();
-        resultBox.innerHTML = `<strong>Respuesta:</strong><br/>${d.message}<br/><br/><span class="small muted">Tokens: ${d.usage.total_tokens} | Latencia: ${d.latency_ms} ms</span>`;
-      });
+        // Mostrar sección
+        const targetId = link.getAttribute('data-target');
+        sections.forEach(sec => sec.classList.remove('active'));
+        document.getElementById(targetId).classList.add('active');
 
-      async function fetchStatus() {
-        const statusNode = document.getElementById("sys-status");
-        const r = await fetch("/api/status");
-        if (r.status === 401) {
-          statusNode.textContent = "Sesión expirada.";
-          return;
+        // En móvil, cerrar sidebar al clickear
+        if (window.innerWidth <= 768) {
+          toggleSidebar();
         }
-        const d = await r.json();
-        statusNode.textContent = d.ollama_ok ? "Servicios operativos." : "Fallo de conexión al modelo.";
+      });
+    });
+
+    // ─── Sistema de Toasts ──────────────────────────────────────────
+    const TOAST_DURATION = 3000;
+
+    function showToast(message, type = 'info', title = '') {
+      const icons = {
+        success: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+        error: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>`,
+        warning: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>`,
+        info: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+      };
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `
+          <span class="toast-icon">${icons[type] || icons.info}</span>
+          <div class="toast-message">
+            ${title ? `<div class="toast-title">${title}</div>` : ''}
+            ${message}
+          </div>
+          <div class="toast-progress" style="animation-duration:${TOAST_DURATION}ms;"></div>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('toast-out');
+        toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      }, TOAST_DURATION);
+    }
+
+    // ─── Clipboard ─────────────────────────────────────────────────
+    async function copyToClipboard(text, showFeedback = true) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed'; ta.style.left = '-999999px';
+          document.body.appendChild(ta);
+          ta.focus(); ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        if (showFeedback) showToast('Copiado al portapapeles', 'success');
+      } catch (err) {
+        showToast('Error al copiar', 'error');
       }
+    }
 
-      function showCopyFeedback(msg) {
-        const fb = document.getElementById("copy-feedback");
-        fb.textContent = msg;
-        fb.style.opacity = 1;
-        setTimeout(() => fb.style.opacity = 0, 3000);
-      }
+    async function copyKeyToClipboard(text) {
+      await copyToClipboard(text, true);
+    }
 
-      document.getElementById("copy-linux-install").addEventListener("click", async () => {
-        await copyToClipboard(document.getElementById("cmd-linux-install").textContent, false);
-        showCopyFeedback("¡Comando copiado! Pégalo en tu terminal bash.");
-      });
+    async function copyNewKey() {
+      const text = document.getElementById('key-result-text').textContent;
+      await copyToClipboard(text);
+    }
 
-      document.getElementById("copy-windows-install").addEventListener("click", async () => {
-        await copyToClipboard(document.getElementById("cmd-win-install").textContent, false);
-        showCopyFeedback("¡Comando copiado! Pégalo en tu PowerShell.");
-      });
-
-      // Inicializar
+    // ─── Sistema de Modales ────────────────────────────────────────
+    function openModal(id) {
+      document.getElementById(id).classList.add('open');
       lucide.createIcons();
-      fetchStatus();
-    </script>
-  </body>
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('open');
+    }
+
+    // Cerrar con ESC o click fuera
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      }
+    });
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+    });
+
+    // ─── Modal: Ver detalles de API Key ───────────────────────────
+    function openKeyModal(key) {
+      const fmt = v => v ? v.substring(0, 19).replace('T', ' ') : '-';
+      const statusLabel = {
+        active: '<span class="badge badge-active">Activa</span>',
+        inactive: '<span class="badge badge-inactive">Inactiva</span>',
+        archived: '<span class="badge badge-archived">Archivada</span>',
+      };
+      document.getElementById('mk-status').innerHTML = statusLabel[key.status] || key.status;
+      document.getElementById('mk-name').textContent = key.name || '-';
+      document.getElementById('mk-model').textContent = key.model || 'Global (todos los modelos)';
+      document.getElementById('mk-created').textContent = fmt(key.created_at);
+      document.getElementById('mk-expires').textContent = fmt(key.expires_at);
+      document.getElementById('mk-last').textContent = fmt(key.last_accessed);
+      document.getElementById('mk-ip').textContent = key.last_used_ip || '-';
+      document.getElementById('mk-scopes').textContent = Array.isArray(key.scopes) ? key.scopes.join(', ') : (key.scopes || 'read, write');
+      document.getElementById('mk-masked').textContent = key.masked_key || '-';
+      document.getElementById('mk-raw').value = key.raw_key || key.masked_key || '';
+      openModal('modal-key');
+    }
+
+    // ─── Modal: Confirmación de Regenerar ─────────────────────────
+    function openRegenModal() {
+      document.getElementById('regen-confirm-input').value = '';
+      document.getElementById('regen-confirm-btn').disabled = true;
+      document.getElementById('regen-confirm-input').classList.remove('match');
+      openModal('modal-regen');
+      setTimeout(() => document.getElementById('regen-confirm-input').focus(), 300);
+    }
+
+    document.getElementById('regen-confirm-input').addEventListener('input', function () {
+      const match = this.value === 'REGENERAR';
+      document.getElementById('regen-confirm-btn').disabled = !match;
+      this.classList.toggle('match', match);
+    });
+
+    async function ejecutarRegeneracion() {
+      const btn = document.getElementById('regen-confirm-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader-2" style="width:14px;"></i> Procesando...';
+      lucide.createIcons({ nodes: [btn] });
+      try {
+        const r = await fetch('/api/auth/api-key/regenerate', { method: 'POST' });
+        closeModal('modal-regen');
+        if (r.ok) {
+          showToast('API Key regenerada correctamente. Recargando...', 'success', '¡Key actualizada!');
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          const d = await r.json();
+          showToast(d.detail || 'Error al regenerar', 'error', 'Error');
+        }
+      } catch (e) {
+        showToast('Error de red', 'error');
+      }
+    }
+
+    // ─── Modal: Onboarding ────────────────────────────────────────
+    const OB_STEPS = [
+      {
+        title: '🔑 Obtén tu API Key',
+        content: `<p>Tu API Key autentica tus solicitudes al gateway. Cada key puede estar vinculada a un modelo específico o ser global.</p>
+            <ol>
+              <li>Ve a <strong>API Keys</strong> en el menú lateral.</li>
+              <li>Selecciona un modelo y haz click en <strong>Generar</strong>.</li>
+              <li>Copia la key de inmediato — no se mostrará completa después.</li>
+            </ol>`,
+      },
+      {
+        title: '💻 Instala el CLI',
+        content: `<p>El CLI permite chatear con el gateway desde cualquier PC de tu red local.</p>
+            <ol>
+              <li>Ve a <strong>Instalador CLI</strong> en el menú.</li>
+              <li>Copia el comando para tu sistema operativo.</li>
+              <li>Pégalo en una terminal del PC destino.</li>
+              <li>Ejecuta <code>lanllm setup</code> con tu API Key.</li>
+            </ol>`,
+      },
+      {
+        title: '🤖 Delegación Inteligente',
+        content: `<p>Escribe cualquier solicitud técnica en lenguaje natural en <strong>Delegación IA</strong>. El sistema:</p>
+            <ol>
+              <li>Genera un embedding con <code>nomic-embed-text</code>.</li>
+              <li>Busca tareas similares en tu historial.</li>
+              <li>Clasifica intent, complejidad y riesgo.</li>
+              <li>Selecciona el modelo Ollama adecuado y ejecuta.</li>
+            </ol>`,
+      },
+      {
+        title: '🔗 Integra con n8n o código',
+        content: `<p>El gateway es compatible con la API de OpenAI. Puedes usarlo en n8n, Make, o cualquier SDK:</p>
+            <ol>
+              <li><strong>Base URL:</strong> <code>http://TU_IP:8000/v1</code></li>
+              <li><strong>API Key:</strong> la generada en el panel.</li>
+              <li><strong>Modelo:</strong> nombre exacto de Ollama (ej: <code>llama3.1:8b</code>).</li>
+            </ol>`,
+      },
+    ];
+
+    let obCurrentStep = 0;
+
+    function obRender() {
+      const total = OB_STEPS.length;
+      const step = OB_STEPS[obCurrentStep];
+      document.getElementById('ob-step-label').textContent = `Paso ${obCurrentStep + 1} de ${total}`;
+      document.getElementById('ob-progress-bar').style.width = `${((obCurrentStep + 1) / total) * 100}%`;
+      document.getElementById('ob-content').innerHTML = `<strong>${step.title}</strong>${step.content}`;
+
+      // Índice navegable
+      const idx = document.getElementById('ob-index');
+      idx.innerHTML = OB_STEPS.map((s, i) => `
+          <li class="${i === obCurrentStep ? 'current' : ''}" onclick="obGoTo(${i})">
+            <span class="onboarding-step-number">${i + 1}</span>
+            ${s.title}
+          </li>`).join('');
+
+      document.getElementById('ob-prev-btn').disabled = obCurrentStep === 0;
+      const nextBtn = document.getElementById('ob-next-btn');
+      if (obCurrentStep === total - 1) {
+        nextBtn.textContent = 'Finalizar';
+        nextBtn.onclick = () => closeModal('modal-onboarding');
+      } else {
+        nextBtn.innerHTML = 'Siguiente <i data-lucide="arrow-right" style="width:14px;"></i>';
+        nextBtn.onclick = () => obNavigate(1);
+      }
+      lucide.createIcons();
+    }
+
+    function obNavigate(dir) {
+      obCurrentStep = Math.max(0, Math.min(OB_STEPS.length - 1, obCurrentStep + dir));
+      obRender();
+    }
+
+    function obGoTo(idx) {
+      obCurrentStep = idx;
+      obRender();
+    }
+
+    // Abrir onboarding desde el botón de bienvenida (si existe)
+    function openOnboarding() {
+      obCurrentStep = 0;
+      obRender();
+      openModal('modal-onboarding');
+    }
+
+    // ─── Delegación IA ─────────────────────────────────────────────
+    document.getElementById('delegate-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('delegate-input').value.trim();
+      const resultBox = document.getElementById('delegate-result-box');
+      const resultEl = document.getElementById('delegate-result');
+      const tagsEl = document.getElementById('delegate-classification-tags');
+      const metaEl = document.getElementById('delegate-meta');
+
+      resultBox.style.display = 'block';
+      tagsEl.innerHTML = '';
+      resultEl.textContent = 'Procesando... (embedding → clasificación → ejecución)';
+      metaEl.textContent = '';
+
+      try {
+        const r = await fetch('/api/delegate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_input: input }),
+        });
+        if (r.status === 401) { showToast('Sesión expirada', 'error'); return; }
+        const d = await r.json();
+
+        // Tags de clasificación
+        const c = d.classification || {};
+        const routeClass = `tag-router-${d.routing?.type || 'PLAN'}`;
+        tagsEl.innerHTML = [
+          d.routing?.type ? `<span class="tag ${routeClass}">${d.routing.type}</span>` : '',
+          c.intent ? `<span class="tag">intent: ${c.intent}</span>` : '',
+          c.complexity != null ? `<span class="tag">complejidad: ${c.complexity}</span>` : '',
+          c.domain ? `<span class="tag">dominio: ${c.domain}</span>` : '',
+          c.riskLevel ? `<span class="tag">riesgo: ${c.riskLevel}</span>` : '',
+          d.routing?.model ? `<span class="tag">modelo: ${d.routing.model}</span>` : '',
+        ].join('');
+
+        resultEl.textContent = d.response || '(sin respuesta)';
+        metaEl.textContent = `Tiempo: ${d.execution_time_ms} ms`;
+      } catch (err) {
+        resultEl.textContent = `Error: ${err.message}`;
+        showToast('Error al conectar con el servidor', 'error');
+      }
+    });
+
+
+    // Autorrellena el nombre de la key al seleccionar un modelo
+    document.getElementById("key-model").addEventListener("change", (e) => {
+      const nameInput = document.getElementById("key-name");
+      if (!nameInput.dataset.manuallyEdited) {
+        nameInput.value = e.target.value;
+      }
+    });
+    document.getElementById("key-name").addEventListener("input", (e) => {
+      // Marca como editado manualmente solo si el usuario borra o cambia el contenido
+      e.target.dataset.manuallyEdited = e.target.value ? "1" : "";
+    });
+
+    document.getElementById("key-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("key-name").value.trim();
+      const model = document.getElementById("key-model").value;
+      if (!model) {
+        alert("Debes seleccionar un modelo.");
+        return;
+      }
+      const r = await fetch("/api/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, model }),
+      });
+
+      if (r.status === 401) {
+        alert("Tu sesión ha expirado.");
+        window.location.href = "/login";
+        return;
+      }
+
+      const d = await r.json();
+      const container = document.getElementById("new-key-container");
+      document.getElementById("key-result-text").textContent = d.api_key;
+      container.style.display = "block";
+      document.getElementById("key-name").value = "";
+    });
+
+    document.getElementById("chat-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const model = document.getElementById("model").value;
+      const resultBox = document.getElementById("chat-result");
+      resultBox.style.display = "block";
+
+      if (model.startsWith("error:")) {
+        resultBox.textContent = "Ollama no está disponible aún.";
+        return;
+      }
+
+      resultBox.textContent = "Procesando...";
+      const message = document.getElementById("message").value.trim();
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, message }),
+      });
+
+      if (r.status === 401) {
+        resultBox.textContent = "Acción bloqueada: tu sesión ha expirado.";
+        return;
+      }
+
+      const d = await r.json();
+      resultBox.innerHTML = `<strong>Respuesta:</strong><br/>${d.message}<br/><br/><span class="small muted">Tokens: ${d.usage.total_tokens} | Latencia: ${d.latency_ms} ms</span>`;
+    });
+
+    async function fetchStatus() {
+      const statusNode = document.getElementById("sys-status");
+      const r = await fetch("/api/status");
+      if (r.status === 401) {
+        statusNode.textContent = "Sesión expirada.";
+        return;
+      }
+      const d = await r.json();
+      statusNode.textContent = d.ollama_ok ? "Servicios operativos." : "Fallo de conexión al modelo.";
+    }
+
+    function showCopyFeedback(msg) {
+      const fb = document.getElementById("copy-feedback");
+      fb.textContent = msg;
+      fb.style.opacity = 1;
+      setTimeout(() => fb.style.opacity = 0, 3000);
+    }
+
+    document.getElementById("copy-linux-install").addEventListener("click", async () => {
+      await copyToClipboard(document.getElementById("cmd-linux-install").textContent, false);
+      showCopyFeedback("¡Comando copiado! Pégalo en tu terminal bash.");
+    });
+
+    document.getElementById("copy-windows-install").addEventListener("click", async () => {
+      await copyToClipboard(document.getElementById("cmd-win-install").textContent, false);
+      showCopyFeedback("¡Comando copiado! Pégalo en tu PowerShell.");
+    });
+
+    // Inicializar
+    lucide.createIcons();
+    fetchStatus();
+  </script>
+</body>
+
 </html>

@@ -36,7 +36,8 @@ COLOR_RED = "\033[91m"
 
 SLASH_COMMANDS = [
     "/help",
-    "/mode <ask|agent>",
+    "/mode <ask|agent|delegate>",
+    "/delegate",
     "/workspace <ruta>",
     "/approve <on|off>",
     "/model <nombre>",
@@ -129,7 +130,8 @@ def print_cli_header(base_url: str, model: str, client_id: str) -> None:
 def print_command_help() -> None:
     print(paint("Comandos disponibles:", COLOR_BOLD + COLOR_MAGENTA))
     print(f"  {paint('/help', COLOR_CYAN)}           Mostrar ayuda")
-    print(f"  {paint('/mode <ask|agent>', COLOR_CYAN)} Cambiar modo de trabajo")
+    print(f"  {paint('/mode <ask|agent|delegate>', COLOR_CYAN)} Cambiar modo de trabajo")
+    print(f"  {paint('/delegate', COLOR_CYAN)}       Activar modo delegacion IA (auto-routing)")
     print(f"  {paint('/workspace <ruta>', COLOR_CYAN)}  Definir carpeta para modo agent")
     print(f"  {paint('/approve <on|off>', COLOR_CYAN)}  Confirmacion de herramientas")
     print(f"  {paint('/model <nombre>', COLOR_CYAN)} Cambiar modelo actual")
@@ -480,6 +482,58 @@ def extract_all_tool_calls(text: str) -> list[dict]:
             # No se cerró el objeto, no hay más que buscar
             break
     return results
+
+
+def delegate_request(base_url: str, api_key: str, user_input: str) -> dict:
+    """Llama a POST /api/delegate y retorna el resultado de la delegacion."""
+    server_base = base_url.rsplit('/v1', 1)[0] if base_url.endswith('/v1') else base_url
+    return api_call("POST", f"{server_base}/api/delegate", api_key, {"user_input": user_input}, timeout=120)
+
+
+def print_delegate_result(result: dict) -> None:
+    """Imprime el resultado de la delegacion con formato de Cursor."""
+    c = result.get('classification', {})
+    routing = result.get('routing', {})
+    router_type = routing.get('type', 'PLAN')
+    model_used = routing.get('model', 'desconocido')
+    exec_ms = result.get('execution_time_ms', 0)
+
+    # Colores por tipo de routing
+    router_colors = {
+        'AUTO': COLOR_GREEN, 'PLAN': COLOR_BLUE,
+        'DEBUG': COLOR_YELLOW, 'DELEGUE': COLOR_RED,
+    }
+    rc = router_colors.get(router_type, COLOR_CYAN)
+
+    print(paint(hr(), COLOR_DIM))
+    print(
+        f"{paint('⚡ Delegacion', COLOR_BOLD + COLOR_MAGENTA)}  "
+        f"{paint(f'[{router_type}]', COLOR_BOLD + rc)}  "
+        f"modelo: {paint(model_used, COLOR_CYAN)}  "
+        f"{paint(f'{exec_ms}ms', COLOR_DIM)}"
+    )
+    # Tags de clasificacion
+    tags = [
+        f"intent:{c.get('intent', '?')}",
+        f"complejidad:{c.get('complexity', '?')}",
+        f"dominio:{c.get('domain', '?')}",
+        f"riesgo:{c.get('riskLevel', '?')}",
+    ]
+    print(paint('   ' + '  ·  '.join(tags), COLOR_DIM))
+    print(paint(hr(), COLOR_DIM))
+
+    response_text = result.get('response', '(sin respuesta)')
+    print(format_assistant_output(response_text))
+
+    similar = result.get('similar_tasks', [])
+    if similar:
+        print(paint(hr('-'), COLOR_DIM))
+        print(paint(f"Tareas similares en historial ({len(similar)}):", COLOR_DIM))
+        for t in similar:
+            sim_pct = int(t.get('similarity', 0) * 100)
+            print(paint(f"  {sim_pct}%  {t.get('user_input', '')[:80]}", COLOR_DIM))
+
+    print(paint(hr(), COLOR_DIM))
 
 
 def parse_tool_call(text: str) -> dict | None:
@@ -899,12 +953,19 @@ def cmd_chat_fallback(args: argparse.Namespace) -> None:
             continue
         if user_text.startswith("/mode "):
             raw_mode = user_text.split(" ", 1)[1].strip().lower()
-            if raw_mode not in ("ask", "agent"):
-                print(paint("Modo invalido. Usa /mode ask o /mode agent", COLOR_RED))
+            if raw_mode not in ("ask", "agent", "delegate"):
+                print(paint("Modo invalido. Usa /mode ask, /mode agent o /mode delegate", COLOR_RED))
                 continue
             mode = raw_mode
             cfg["mode"] = mode
             print(paint(f"Modo cambiado a: {mode}", COLOR_CYAN))
+            if mode == "delegate":
+                print(paint("Modo delegacion activo: cada mensaje se envia a /api/delegate (auto-routing con Ollama)", COLOR_DIM))
+            continue
+        if user_text == "/delegate":
+            mode = "delegate"
+            print(paint("Modo delegacion activado. Escribe tu solicitud en lenguaje natural.", COLOR_CYAN))
+            print(paint("Tip: /mode ask para volver al chat normal.", COLOR_DIM))
             continue
         if user_text.startswith("/workspace "):
             raw_ws = user_text.split(" ", 1)[1].strip()
@@ -1064,6 +1125,27 @@ def cmd_chat_fallback(args: argparse.Namespace) -> None:
             continue
         if user_text.startswith("/"):
             print(paint("Comando no reconocido. Usa /help", COLOR_RED))
+            continue
+
+        # ── Modo delegacion: envia al router inteligente ─────────────────
+        if mode == "delegate":
+            stop_event = threading.Event()
+            spinner_thread = threading.Thread(target=spinner_while_thinking, args=(stop_event,), daemon=True)
+            spinner_thread.start()
+            try:
+                result = delegate_request(base_url, api_key, user_text)
+            except Exception as exc:
+                stop_event.set()
+                spinner_thread.join()
+                print(paint(f"Error: {exc}", COLOR_RED))
+                continue
+            finally:
+                stop_event.set()
+                spinner_thread.join()
+            print_delegate_result(result)
+            # Guardar en historial local tambien
+            history.append({"role": "user", "content": user_text})
+            history.append({"role": "assistant", "content": result.get('response', '')})
             continue
 
         history.append({"role": "user", "content": user_text})

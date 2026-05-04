@@ -17,20 +17,29 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.orchestrator import NodeOrchestrator
+from app.embeddings import get_embedding, classify_request, route_request, pick_classifier_model
 
 from app.db import (
+    archive_old_inactive_keys,
+    count_daily_regenerations,
     create_api_key,
+    deactivate_all_user_keys,
+    deactivate_key,
     ensure_conversation,
+    find_similar_tasks,
+    get_active_key_for_user,
     get_usage_summary,
     init_db,
     list_api_keys,
     list_clients_usage,
     list_recent_conversations,
+    log_audit_event,
     save_message,
+    save_task_embedding,
     validate_api_key,
     create_user,
     verify_user,
-    get_user_by_id
+    get_user_by_id,
 )
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -107,6 +116,10 @@ class CompletionRequest(BaseModel):
     client_id: str | None = None
     stream: bool = False
 
+class DelegateRequest(BaseModel):
+    user_input: str = Field(..., description="Solicitud del usuario en lenguaje natural")
+    conversation_id: str | None = None
+
 def get_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -115,13 +128,14 @@ def get_bearer_token(authorization: str | None) -> str | None:
         return None
     return parts[1].strip()
 
-def api_key_required(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def api_key_required(request: Request, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     token = get_bearer_token(authorization)
     if not token:
         raise HTTPException(status_code=401, detail="API key ausente")
-    user_data = validate_api_key(token)
+    ip = request.client.host if request.client else None
+    user_data = validate_api_key(token, ip_address=ip)
     if not user_data:
-        raise HTTPException(status_code=401, detail="API key invalida")
+        raise HTTPException(status_code=401, detail="API key invalida o expirada")
     enforce_rate_limit(token)
     return user_data
 
@@ -165,8 +179,27 @@ async def on_startup() -> None:
     init_db()
     http_client_fast = httpx.AsyncClient(timeout=10.0)
     http_client_chat = httpx.AsyncClient(timeout=120.0)
-    # Inicia el orquestador de nodos LAN en background
     orquestador.iniciar()
+    # Cron job diario: archiva keys inactivas > 30 días
+    _start_archiver_cron()
+
+
+def _start_archiver_cron() -> None:
+    """Lanza un hilo daemon que archiva keys inactivas cada 24 horas."""
+    def _run():
+        while True:
+            time.sleep(86400)  # 24 horas
+            try:
+                n = archive_old_inactive_keys()
+                if n:
+                    import logging as _log
+                    _log.getLogger("uvicorn").info(f"[cron] {n} API keys archivadas.")
+            except Exception as exc:
+                import logging as _log
+                _log.getLogger("uvicorn").warning(f"[cron] Error al archivar keys: {exc}")
+
+    t = threading.Thread(target=_run, daemon=True, name="key-archiver")
+    t.start()
 
 
 @app.on_event("shutdown")
@@ -207,17 +240,74 @@ async def api_register(payload: AuthRequest):
     return response
 
 @app.post("/api/auth/login")
-async def api_login(payload: AuthRequest):
+async def api_login(payload: AuthRequest, request: Request):
     user = verify_user(payload.username, payload.password)
     if not user:
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-        
-    # Genera una key de sesion (o para la CLI)
-    raw_key, _ = create_api_key(f"Login {int(time.time())}", user["id"])
-    
-    response = JSONResponse({"message": "Login correcto", "api_key": raw_key, "user": user})
+
+    ip = request.client.host if request.client else None
+    user_id = user["id"]
+
+    # Reutilizar key activa y no expirada si existe
+    existing = get_active_key_for_user(user_id)
+    if existing:
+        raw_key = existing["raw_key"]
+        is_new = False
+    else:
+        # Desactivar keys viejas y generar una nueva
+        deactivate_all_user_keys(user_id)
+        raw_key, _ = create_api_key(f"Session - {payload.username}", user_id)
+        is_new = True
+        log_audit_event("api_key_created", user_id=user_id, ip_address=ip, reason="login")
+
+    response = JSONResponse({
+        "message": "Login correcto",
+        "api_key": raw_key,
+        "isNew": is_new,
+        "user": user,
+    })
     response.set_cookie(key="session_token", value=raw_key, httponly=True)
     return response
+
+
+@app.post("/api/auth/api-key/regenerate")
+async def regenerate_api_key(request: Request, user_data: dict[str, Any] = Depends(cookie_auth_required)):
+    """Regenera la API key del usuario. Límite: 5 veces por día."""
+    user_id = user_data["id"]
+    ip = request.client.host if request.client else None
+
+    if count_daily_regenerations(user_id) >= 5:
+        raise HTTPException(
+            status_code=429,
+            detail="Límite diario de regeneraciones alcanzado (máx. 5 por día)",
+        )
+
+    deactivate_all_user_keys(user_id)
+    raw_key, key_data = create_api_key(f"Session - {user_data['username']}", user_id)
+    log_audit_event(
+        "api_key_regenerated",
+        user_id=user_id,
+        key_id=key_data["id"],
+        ip_address=ip,
+    )
+
+    response = JSONResponse({
+        "newApiKey": raw_key,
+        "oldKeyDeactivated": True,
+        "deactivationTime": key_data["created_at"],
+        "expiresAt": key_data["expires_at"],
+    })
+    response.set_cookie(key="session_token", value=raw_key, httponly=True)
+    return response
+
+
+@app.delete("/api/keys/{key_id}")
+async def delete_api_key(key_id: int, request: Request, user_data: dict[str, Any] = Depends(cookie_auth_required)):
+    """Soft delete de una key específica del usuario."""
+    ip = request.client.host if request.client else None
+    deactivate_key(key_id)
+    log_audit_event("api_key_deleted", user_id=user_data["id"], key_id=key_id, ip_address=ip)
+    return {"deleted": True, "key_id": key_id}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -382,14 +472,94 @@ async def api_key_info(user_data: dict[str, Any] = Depends(api_key_required)):
     }
 
 @app.post("/api/keys")
-async def create_api_key_endpoint(payload: dict[str, Any], user_data: dict[str, Any] = Depends(cookie_auth_required)):
+async def create_api_key_endpoint(payload: dict[str, Any], request: Request, user_data: dict[str, Any] = Depends(cookie_auth_required)):
     name = (payload.get("name") or "").strip()
     model = (payload.get("model") or "").strip() or None
-    # Si no hay nombre, usar el modelo como nombre; si tampoco hay modelo, usar etiqueta genérica
     if not name:
         name = model or "Nueva Key"
+    ip = request.client.host if request.client else None
     raw_key, key_data = create_api_key(name, user_data["id"], model)
+    log_audit_event("api_key_created", user_id=user_data["id"], key_id=key_data["id"], ip_address=ip)
     return {"api_key": raw_key, "data": key_data}
+
+
+@app.post("/api/delegate")
+async def delegate_request(payload: DelegateRequest, request: Request, user_data: dict[str, Any] = Depends(cookie_auth_required)):
+    """
+    Flujo E2E de delegación inteligente:
+    1. Genera embedding de la solicitud con Ollama (nomic-embed-text)
+    2. Busca tareas similares del usuario en SQLite
+    3. Clasifica: intent, complexity, domain, riskLevel
+    4. Enruta al modelo más adecuado según reglas
+    5. Ejecuta en Ollama y guarda resultado con embedding
+    """
+    user_id = user_data["id"]
+    started_at = time.perf_counter()
+
+    # Paso 1: Embedding
+    try:
+        embedding = await get_embedding(payload.user_input, OLLAMA_BASE_URL)
+    except Exception:
+        embedding = []
+
+    # Paso 2: Buscar tareas similares
+    similar_tasks = find_similar_tasks(user_id, embedding) if embedding else []
+
+    # Paso 3: Clasificar con modelo liviano
+    available_models = [m["id"] for m in await fetch_models() if not str(m.get("id", "")).startswith("error:")]
+    classifier_model = pick_classifier_model(available_models)
+    classification = await classify_request(
+        payload.user_input, similar_tasks, OLLAMA_BASE_URL, classifier_model
+    )
+
+    # Paso 4: Router
+    routing = route_request(classification, available_models)
+
+    # Paso 5: Ejecutar en Ollama (si no es DELEGUE)
+    response_text = ""
+    success = False
+    if routing["type"] == "DELEGUE":
+        response_text = routing["message"]
+        success = True
+    else:
+        model = routing["model"]
+        system_prompt = routing["system_prompt"]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": payload.user_input},
+        ]
+        try:
+            resp = await ollama_chat(model, messages)
+            response_text = resp.get("message", {}).get("content", "")
+            success = True
+        except Exception as exc:
+            response_text = f"Error al ejecutar el modelo: {exc}"
+            success = False
+
+    execution_ms = int((time.perf_counter() - started_at) * 1000)
+
+    # Paso 6: Guardar embedding + resultado en SQLite
+    save_task_embedding(
+        user_id=user_id,
+        user_input=payload.user_input,
+        classification=classification,
+        router_used=routing["type"],
+        model_called=routing.get("model"),
+        response_summary=response_text[:500],
+        success=success,
+        embedding=embedding,
+    )
+
+    return {
+        "response": response_text,
+        "classification": classification,
+        "routing": {
+            "type": routing["type"],
+            "model": routing.get("model"),
+        },
+        "similar_tasks": similar_tasks[:3],
+        "execution_time_ms": execution_ms,
+    }
 
 @app.post("/api/chat")
 async def api_chat(payload: UIChatRequest, user_data: dict[str, Any] = Depends(cookie_auth_required)):
