@@ -66,6 +66,17 @@ jobs:
             $PackageJson = Get-Content -Raw -Path "App Folax/package.json" | ConvertFrom-Json
             $Version = $PackageJson.version
             
+            # Intentar obtener la firma de Tauri (.msi.sig)
+            $SIG_PATH = Get-ChildItem -Path "App Folax/src-tauri/target/release/bundle/msi/*.msi.sig" | Select-Object -First 1
+            $Signature = ""
+            if ($SIG_PATH) {
+              Write-Host "Found signature file $($SIG_PATH.Name)"
+              $Signature = Get-Content -Raw -Path $SIG_PATH.FullName
+              $Signature = $Signature.Trim()
+            } else {
+              Write-Warning "No signature file (.sig) found for the MSI installer."
+            }
+
             # Obtener los últimos 3 mensajes de commits como changelog real
             $GitCommits = git log -n 3 --pretty=format:"%s"
             if ($GitCommits) {
@@ -81,6 +92,7 @@ jobs:
               -F "channel=stable" `
               -F "title=App Folax v$Version" `
               -F "changelog=$ChangelogJson" `
+              -F "checksum_sha256=$Signature" `
               -F "file=@$($MSI_PATH.FullName)" `
               https://remote.datacentgbx.online/api/versions/upload
           } else {

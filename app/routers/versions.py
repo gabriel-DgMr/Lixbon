@@ -2,7 +2,7 @@ import json
 import time
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from app import db
 from app.config import APP_VERSION
@@ -76,7 +76,7 @@ async def check_update(v: str = Query(..., description="Versión instalada en el
     }
 
 @router.get("/api/updates/manifest/{channel}")
-async def get_tauri_manifest(channel: str):
+async def get_tauri_manifest(channel: str, request: Request):
     """Devuelve el manifest en el formato estándar que espera el Tauri Auto-updater."""
     if channel not in ["stable", "beta"]:
         raise HTTPException(status_code=400, detail="Canal de actualización inválido")
@@ -97,6 +97,12 @@ async def get_tauri_manifest(channel: str):
     # }
     notes = "\n".join([f"- {item}" for item in latest["changelog"]])
     
+    # Construir la URL absoluta
+    base_url = str(request.base_url).rstrip("/")
+    download_url = latest["download_url"]
+    if not download_url.startswith("http://") and not download_url.startswith("https://"):
+        download_url = f"{base_url}{download_url}"
+        
     return {
         "version": latest["version"],
         "notes": notes,
@@ -104,7 +110,7 @@ async def get_tauri_manifest(channel: str):
         "platforms": {
             # Se asume Windows por simplicidad, se puede extender para mac y linux
             "windows-x86_64": {
-                "url": latest["download_url"],
+                "url": download_url,
                 "signature": latest["checksum_sha256"] or ""
             }
         }
