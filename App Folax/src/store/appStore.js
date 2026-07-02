@@ -71,4 +71,4 @@ export const useAppStore = create((set, get) => ({
     localStorage.removeItem('folax_user');
     set({ user: null, apiKey: '' });
   }
-});
+}));

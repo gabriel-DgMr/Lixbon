@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
-import { LuUser, LuLock, LuArrowRight, LuAlertCircle } from 'react-icons/lu';
+import { LuUser, LuLock, LuArrowRight, LuCircleAlert } from 'react-icons/lu';
 
 export function LoginView({ onSwitchView }) {
   const { serverUrl, setApiKey, setUser, setConnectionStatus } = useAppStore();
@@ -83,7 +83,7 @@ export function LoginView({ onSwitchView }) {
 
         {error && (
           <div className="error-banner flex align-center gap-2">
-            <LuAlertCircle size={16} />
+            <LuCircleAlert size={16} />
             <span>{error}</span>
           </div>
         )}

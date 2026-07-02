@@ -1,19 +1,19 @@
 import React from 'react';
-import { LuCheckCircle2, LuAlertTriangle, LuXCircle, LuCpu } from 'react-icons/lu';
+import { LuCircleCheck, LuTriangleAlert, LuCircleX, LuCpu } from 'react-icons/lu';
 
 export function ServiceRow({ name, status, details, latency }) {
-  let icon = <LuXCircle size={18} style={{ color: 'var(--status-error)' }} />;
+  let icon = <LuCircleX size={18} style={{ color: 'var(--status-error)' }} />;
   let badgeText = 'Offline';
   let badgeColor = 'rgba(239, 68, 68, 0.1)';
   let textColor = 'var(--status-error)';
 
   if (status === 'online') {
-    icon = <LuCheckCircle2 size={18} style={{ color: 'var(--status-ok)' }} />;
+    icon = <LuCircleCheck size={18} style={{ color: 'var(--status-ok)' }} />;
     badgeText = 'Online';
     badgeColor = 'rgba(34, 197, 94, 0.1)';
     textColor = 'var(--status-ok)';
   } else if (status === 'degraded') {
-    icon = <LuAlertTriangle size={18} style={{ color: 'var(--status-warn)' }} />;
+    icon = <LuTriangleAlert size={18} style={{ color: 'var(--status-warn)' }} />;
     badgeText = 'Degraded';
     badgeColor = 'rgba(245, 158, 11, 0.1)';
     textColor = 'var(--status-warn)';
