@@ -1,23 +1,31 @@
 """
-node_agent.py — Agente de métricas para nodos LAN LLM
-======================================================
-Corre en cada equipo worker. Expone GET /metrics con CPU, RAM y GPU.
+node_agent.py — Agente de métricas para nodos FOLAX DTC
+=======================================================
+Corre en cada equipo worker. Expone métricas de CPU/RAM/GPU y lista de modelos.
+
+Mejoras v2.0:
+- GET /info     — info estática del nodo (hostname, OS, versiones)
+- GET /metrics  — incluye 'models' para evitar request extra al orquestador
+- Watchdog de Ollama: lo reinicia si detecta que cayó
 
 Uso:
-  python node_agent.py                  # Iniciar el agente
-  python node_agent.py --install        # Registrar inicio automático en Windows
-  python node_agent.py --uninstall      # Eliminar inicio automático
+  python app/node_agent.py                # Iniciar el agente
+  python app/node_agent.py --install      # Registrar inicio automático en Windows
+  python app/node_agent.py --uninstall    # Eliminar inicio automático
 
 Variables de entorno:
   AGENT_PORT   Puerto HTTP  (default: 8765)
   OLLAMA_URL   URL de Ollama local (default: http://127.0.0.1:11434)
+  OLLAMA_WATCHDOG  '1' para habilitar watchdog (default: 1)
 """
 
 import json
 import os
+import platform
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ──────────────────────────────────────────────
@@ -32,7 +40,9 @@ except ImportError:
 
 PORT = int(os.getenv("AGENT_PORT", "8765"))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-TASK_NAME = "LanLLM_NodeAgent"
+OLLAMA_WATCHDOG = os.getenv("OLLAMA_WATCHDOG", "1") == "1"
+TASK_NAME = "FOLAX_NodeAgent"
+AGENT_VERSION = "2.0.0"
 
 
 # ──────────────────────────────────────────────
@@ -80,8 +90,19 @@ def _gpu_metrics() -> dict:
         }
 
 
+def _fetch_ollama_models() -> list[str]:
+    """Obtiene la lista de modelos instalados en Ollama local."""
+    try:
+        import urllib.request as _url_req
+        with _url_req.urlopen(f"{OLLAMA_URL}/api/tags", timeout=4) as resp:
+            data = json.loads(resp.read().decode())
+        return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
 def obtener_metricas() -> dict:
-    """Recopila CPU, RAM y GPU del equipo local."""
+    """Recopila CPU, RAM, GPU y modelos disponibles del equipo local."""
     cpu = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     ram_libre_gb = round(mem.available / (1024 ** 3), 2)
@@ -95,8 +116,21 @@ def obtener_metricas() -> dict:
         "ram_free_gb": ram_libre_gb,
         "ram_total_gb": ram_total_gb,
         "ollama_url": OLLAMA_URL,
-        "hostname": os.environ.get("COMPUTERNAME", "desconocido"),
+        "hostname": os.environ.get("COMPUTERNAME", platform.node()),
+        "models": _fetch_ollama_models(),  # Incluido para evitar request extra del orquestador
         **gpu,
+    }
+
+
+def obtener_info() -> dict:
+    """Devuelve información estática del nodo (no cambia entre polls)."""
+    return {
+        "hostname": os.environ.get("COMPUTERNAME", platform.node()),
+        "os": f"{platform.system()} {platform.release()}",
+        "python_version": platform.python_version(),
+        "agent_version": AGENT_VERSION,
+        "ollama_url": OLLAMA_URL,
+        "port": PORT,
     }
 
 
@@ -128,8 +162,24 @@ class AgentHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(error)
 
+        elif self.path == "/info":
+            try:
+                datos = obtener_info()
+                cuerpo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+            except Exception as exc:
+                error = json.dumps({"error": str(exc)}).encode("utf-8")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(error)
+
         elif self.path == "/health":
-            cuerpo = b'{"status":"ok"}'
+            cuerpo = b'{"status":"ok","service":"FOLAX Node Agent"}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -145,9 +195,35 @@ def iniciar_servidor():
     servidor = HTTPServer(("0.0.0.0", PORT), AgentHandler)
     hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
     hilo.start()
-    print(f"[node_agent] Escuchando en http://0.0.0.0:{PORT}/metrics")
-    print(f"[node_agent] Ollama local: {OLLAMA_URL}")
+    print(f"[FOLAX Agent] Escuchando en http://0.0.0.0:{PORT}/metrics")
+    print(f"[FOLAX Agent] Ollama local:    {OLLAMA_URL}")
+    print(f"[FOLAX Agent] Versión:         {AGENT_VERSION}")
     return servidor
+
+
+def _watchdog_ollama():
+    """
+    Watchdog: verifica cada 30s si Ollama responde.
+    Si detecta que cayó, intenta reiniciarlo con 'ollama serve'.
+    """
+    import urllib.request as _url_req
+    while True:
+        time.sleep(30)
+        try:
+            with _url_req.urlopen(f"{OLLAMA_URL}/api/tags", timeout=4):
+                pass  # Ollama OK
+        except Exception:
+            print("[FOLAX Watchdog] Ollama no responde. Intentando reiniciar...")
+            try:
+                subprocess.Popen(
+                    ["ollama", "serve"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                time.sleep(5)
+                print("[FOLAX Watchdog] Ollama reiniciado.")
+            except Exception as exc:
+                print(f"[FOLAX Watchdog] No se pudo reiniciar Ollama: {exc}")
 
 
 # ──────────────────────────────────────────────
@@ -196,8 +272,6 @@ def desinstalar_tarea():
 # ──────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import time
-
     if "--install" in sys.argv:
         instalar_tarea()
         sys.exit(0)
@@ -208,9 +282,14 @@ if __name__ == "__main__":
 
     servidor = iniciar_servidor()
 
+    # Iniciar watchdog de Ollama si está habilitado
+    if OLLAMA_WATCHDOG:
+        threading.Thread(target=_watchdog_ollama, daemon=True, name="ollama-watchdog").start()
+        print("[FOLAX Watchdog] Monitoreando Ollama cada 30s.")
+
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[node_agent] Deteniendo agente...")
+        print("\n[FOLAX Agent] Deteniendo agente...")
         servidor.shutdown()

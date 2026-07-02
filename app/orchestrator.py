@@ -1,8 +1,13 @@
 """
-orchestrator.py — Orquestador de nodos LAN LLM
-================================================
+orchestrator.py — Orquestador de nodos FOLAX DTC v2.0
+=====================================================
 Gestiona el estado de los nodos, elige el mejor según recursos
 disponibles y reenvía peticiones al Ollama del nodo ganador.
+
+Mejoras v2.0:
+- Poll inicial inmediato (no espera POLL_INTERVAL para el primer estado)
+- Circuit breaker con backoff exponencial (1 min → 5 min → 15 min)
+- Round-robin para desempatar nodos con score idéntico
 """
 
 import json
@@ -15,7 +20,7 @@ from typing import Any
 
 import httpx
 
-logger = logging.getLogger("orchestrator")
+logger = logging.getLogger("folax.orchestrator")
 
 # Ruta al archivo de configuración de nodos
 NODES_CONFIG_PATH = Path(__file__).resolve().parent.parent / "nodes.json"
@@ -25,6 +30,9 @@ POLL_INTERVAL = 15
 
 # Cuántos fallos consecutivos marcan un nodo como offline
 MAX_FALLOS = 2
+
+# Backoff exponencial: fallos → segundos de espera antes de reintentar
+CIRCUIT_BACKOFF = {2: 60, 4: 300, 8: 900}   # 1 min, 5 min, 15 min
 
 # Pesos para el scoring (deben sumar 1.0)
 PESO_CPU = 0.25
@@ -57,6 +65,7 @@ class NodeOrchestrator:
         self._nodos: list[dict] = []          # Config estática de nodes.json
         self._estado: dict[str, dict] = {}    # Estado dinámico por node id
         self._lock = threading.Lock()
+        self._rr_index: int = 0               # Índice para round-robin
         self._hilo_poll: threading.Thread | None = None
         self._activo = False
         self._cliente = httpx.Client(timeout=5.0)
@@ -83,8 +92,9 @@ class NodeOrchestrator:
                     self._estado[nid] = {
                         "online": False,
                         "fallos": 0,
+                        "next_retry": 0.0,     # timestamp hasta el que no se intenta
                         "metricas": {},
-                        "modelos": [],   # Lista de nombres de modelos disponibles
+                        "modelos": [],
                         "score": 0.0,
                         "ultimo_poll": None,
                         "config": nodo,
@@ -93,13 +103,21 @@ class NodeOrchestrator:
             logger.error(f"Error al cargar nodes.json: {exc}")
 
     def iniciar(self) -> None:
-        """Arranca el hilo de polling en background."""
+        """Arranca el hilo de polling en background. Hace un primer poll inmediato."""
         self.cargar_nodos()
         if not self._nodos:
             logger.warning("Sin nodos configurados. El orquestador usará Ollama local como fallback.")
             return
 
         self._activo = True
+
+        # ── Poll inicial inmediato (no esperar POLL_INTERVAL para tener datos) ──
+        for nodo in self._nodos:
+            try:
+                self._poll_nodo(nodo)
+            except Exception:
+                pass
+
         self._hilo_poll = threading.Thread(
             target=self._loop_polling,
             daemon=True,
@@ -125,21 +143,50 @@ class NodeOrchestrator:
             time.sleep(POLL_INTERVAL)
 
     def _poll_nodo(self, nodo: dict) -> None:
-        """Consulta /metrics y modelos de un nodo y actualiza su estado."""
+        """Consulta /metrics de un nodo y actualiza su estado. Respeta el circuit breaker."""
         nid = nodo["id"]
+        now = time.time()
+
+        # Circuit breaker: skip si el nodo está en backoff
+        with self._lock:
+            next_retry = self._estado[nid].get("next_retry", 0.0)
+        if now < next_retry:
+            return
+
         url = f"{nodo['agent_url'].rstrip('/')}/metrics"
 
         try:
-            resp = self._cliente.get(url)
-            resp.raise_for_status()
-            metricas = resp.json()
+            # Try to get metrics from the agent
+            try:
+                resp = self._cliente.get(url)
+                resp.raise_for_status()
+                metricas = resp.json()
+            except Exception:
+                # Fallback: Check if Ollama is alive directly
+                ollama_url_tags = f"{nodo['ollama_url'].rstrip('/')}/api/tags"
+                resp_ollama = self._cliente.get(ollama_url_tags)
+                resp_ollama.raise_for_status()
+                # Mock metrics if Ollama is up but agent is down
+                metricas = {
+                    "cpu_percent": 0.0,
+                    "ram_percent": 0.0,
+                    "gpu_free_percent": 100.0,
+                    "models": [m["name"] for m in resp_ollama.json().get("models", [])]
+                }
+
+            # Si /metrics incluye modelos, usarlos directamente; si no, buscarlos aparte
+            if "models" in metricas:
+                modelos = metricas.pop("models", [])
+            else:
+                modelos = self._fetch_modelos_nodo(nodo)
+
             score = _calcular_score(metricas)
-            modelos = self._fetch_modelos_nodo(nodo)
 
             with self._lock:
                 self._estado[nid].update({
                     "online": True,
                     "fallos": 0,
+                    "next_retry": 0.0,
                     "metricas": metricas,
                     "modelos": modelos,
                     "score": score,
@@ -151,9 +198,22 @@ class NodeOrchestrator:
             with self._lock:
                 estado = self._estado[nid]
                 estado["fallos"] += 1
-                if estado["fallos"] >= MAX_FALLOS:
+                fallos = estado["fallos"]
+
+                # Circuit breaker: calcular tiempo de backoff
+                wait_seconds = 0
+                for threshold, wait in sorted(CIRCUIT_BACKOFF.items(), reverse=True):
+                    if fallos >= threshold:
+                        wait_seconds = wait
+                        break
+
+                if fallos >= MAX_FALLOS:
                     estado["online"] = False
-                    logger.warning(f"[{nid}] Offline ({exc})")
+                    if wait_seconds:
+                        estado["next_retry"] = time.time() + wait_seconds
+                        logger.warning(f"[{nid}] Offline ({exc}). Reintento en {wait_seconds}s.")
+                    else:
+                        logger.warning(f"[{nid}] Offline ({exc})")
 
     def _fetch_modelos_nodo(self, nodo: dict) -> list[str]:
         """
@@ -176,18 +236,23 @@ class NodeOrchestrator:
     def best_node(self) -> dict | None:
         """
         Retorna la config del nodo con mayor score entre los online.
+        Usa round-robin como desempate entre nodos con score idéntico.
         Retorna None si no hay nodos online.
         """
         with self._lock:
-            candidatos = [
-                est for est in self._estado.values()
-                if est["online"]
-            ]
+            candidatos = [est for est in self._estado.values() if est["online"]]
 
         if not candidatos:
             return None
 
-        ganador = max(candidatos, key=lambda e: e["score"])
+        max_score = max(e["score"] for e in candidatos)
+        empatados = [e for e in candidatos if e["score"] == max_score]
+
+        # Round-robin entre empatados para distribuir carga
+        with self._lock:
+            ganador = empatados[self._rr_index % len(empatados)]
+            self._rr_index = (self._rr_index + 1) % max(len(empatados), 1)
+
         return ganador["config"]
 
     def best_node_for_model(self, model: str) -> dict | None:
@@ -322,9 +387,11 @@ class NodeOrchestrator:
 
     def estado_nodos(self) -> list[dict]:
         """Devuelve el estado completo de todos los nodos (para /api/nodes)."""
+        now = time.time()
         with self._lock:
             resultado = []
             for nid, est in self._estado.items():
+                next_retry = est.get("next_retry", 0.0)
                 resultado.append({
                     "id": nid,
                     "name": est["config"].get("name", nid),
@@ -332,8 +399,12 @@ class NodeOrchestrator:
                     "ollama_url": est["config"].get("ollama_url"),
                     "online": est["online"],
                     "score": est["score"],
+                    "fallos": est["fallos"],
                     "modelos": est["modelos"],
                     "metricas": est["metricas"],
                     "ultimo_poll": est["ultimo_poll"],
+                    "seconds_ago": round(now - est["ultimo_poll"], 1) if est["ultimo_poll"] else None,
+                    "circuit_breaker": next_retry > now,
+                    "retry_in_seconds": max(0, round(next_retry - now)) if next_retry > now else 0,
                 })
             return resultado

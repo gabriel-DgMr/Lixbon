@@ -1,19 +1,7 @@
 [
   {
-    "id": "nodo-a",
-    "name": "PC Nodo A",
-    "agent_url": "http://10.2.81.77:8765",
-    "ollama_url": "http://10.2.81.77:11434"
-  },
-  {
-    "id": "nodo-b",
-    "name": "PC Nodo B",
-    "agent_url": "http://10.2.81.71:8765",
-    "ollama_url": "http://10.2.81.71:11434"
-  },
-  {
-    "id": "nodo-c",
-    "name": "PC Nodo C (Local)",
+    "id": "node-local",
+    "name": "Local Node (Windows)",
     "agent_url": "http://127.0.0.1:8765",
     "ollama_url": "http://127.0.0.1:11434"
   }

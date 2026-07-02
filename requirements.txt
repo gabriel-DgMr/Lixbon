@@ -3,3 +3,5 @@ uvicorn[standard]
 httpx
 jinja2
 psutil
+mysql-connector-python>=8.4.0
+python-multipart
