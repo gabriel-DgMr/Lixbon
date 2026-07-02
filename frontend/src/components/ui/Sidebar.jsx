@@ -11,6 +11,7 @@ import {
   LuUsers,
   LuSparkles 
 } from 'react-icons/lu';
+import '../../style/Sidebar.css';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LuLayoutDashboard },
@@ -33,24 +34,13 @@ export function Sidebar({ isOpen, onClose }) {
     <aside className={`sidebar ${isOpen ? 'open' : 'collapsed'}`} id="sidebar">
       {/* Brand / Logo */}
       <div className="brand">
-        <div className="brand-info" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '4px',
-            background: '#5856D6',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 'bold',
-            fontSize: '1.1rem'
-          }}>F</div>
+        <div className="brand-info">
+          <div className="brand-logo">F</div>
           <div>
-            <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', flexDirection: 'column', gap: '2px', lineHeight: 1 }}>
+            <h1 className="brand-title">
               FOLAX DTC
             </h1>
-            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0, fontFamily: 'JetBrains Mono', fontWeight: 500 }}>Local Cluster</p>
+            <p className="brand-subtitle">Local Cluster</p>
           </div>
         </div>
         <button className="close-sidebar" id="close-sidebar-btn" title="Cerrar menú" onClick={onClose}>
@@ -59,27 +49,10 @@ export function Sidebar({ isOpen, onClose }) {
       </div>
 
       {/* CTA Button: Deploy Model */}
-      <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
+      <div className="sidebar-cta-wrapper">
         <button
           onClick={() => window.location.href = '/delegation'}
-          style={{
-            width: '100%',
-            background: 'var(--primary)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 'var(--radius)',
-            padding: '0.6rem',
-            fontWeight: 500,
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            transition: 'background 0.2s'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.background = 'var(--primary-hover)'}
-          onMouseOut={(e) => e.currentTarget.style.background = 'var(--primary)'}
+          className="btn-deploy-model"
         >
           <LuSparkles size={14} /> Deploy Model
         </button>
@@ -100,10 +73,10 @@ export function Sidebar({ isOpen, onClose }) {
         ))}
 
         {/* Spacer to push footer links to the bottom */}
-        <div style={{ flex: 1 }}></div>
+        <div className="nav-spacer"></div>
 
         {/* Divider line */}
-        <div style={{ borderTop: '1px solid var(--border)', margin: '0.5rem 0' }}></div>
+        <div className="nav-divider"></div>
 
         {/* Footer links mapping to Integrations (Docs) and Teams (Support) */}
         <NavLink

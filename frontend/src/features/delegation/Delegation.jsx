@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../../lib/api';
 import { LuSparkles, LuBrainCircuit } from 'react-icons/lu';
+import '../../style/Delegation.css';
 
 export default function Delegation() {
   const [userInput, setUserInput] = useState('');
@@ -30,14 +31,14 @@ export default function Delegation() {
 
   return (
     <div id="delegate" className="section-content active">
-      <section className="panel" style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <h2><LuSparkles style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Delegación Inteligente</h2>
+      <section className="panel delegation-panel">
+        <h2><LuSparkles className="delegation-icon" /> Delegación Inteligente</h2>
         <p className="muted">
           Escribe tu solicitud en lenguaje natural. El sistema la clasifica automáticamente, busca
           contexto similar en tu historial y la delega al modelo Ollama más adecuado.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ marginTop: '1.25rem' }}>
+        <form onSubmit={handleSubmit} className="delegation-form">
           <label htmlFor="delegate-input">¿Qué necesitas hacer?</label>
           <textarea 
             id="delegate-input" 
@@ -48,19 +49,19 @@ export default function Delegation() {
             onChange={(e) => setUserInput(e.target.value)}
           ></textarea>
           <button type="submit" disabled={loading}>
-            <LuBrainCircuit style={{ width: '18px', marginRight: '4px', verticalAlign: 'middle' }} /> 
+            <LuBrainCircuit className="delegation-btn-icon" /> 
             {loading ? 'Delegando...' : 'Delegar solicitud'}
           </button>
         </form>
 
         {result && (
-          <div id="delegate-result-box" style={{ marginTop: '1.5rem' }}>
+          <div id="delegate-result-box" className="delegation-result-box">
             {result.status && (
-              <div className="muted small" style={{ marginBottom: '1rem' }}>{result.status}</div>
+              <div className="muted small delegation-status">{result.status}</div>
             )}
             
             {result.error && (
-              <div className="error-box" style={{ marginBottom: '1rem' }}>{result.error}</div>
+              <div className="error-box delegation-error">{result.error}</div>
             )}
 
             {result.classification && (
@@ -89,13 +90,13 @@ export default function Delegation() {
             )}
 
             {result.response && (
-              <div className="delegate-result" style={{ background: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem 1.25rem', whiteSpace: 'pre-wrap' }}>
+              <div className="delegate-result delegation-response">
                 {result.response}
               </div>
             )}
 
             {result.execution_time_ms != null && (
-              <p className="small muted" style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+              <p className="small muted delegation-time">
                 Tiempo: {result.execution_time_ms} ms
               </p>
             )}

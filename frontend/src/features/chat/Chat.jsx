@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../../lib/api';
 import { LuBot, LuSend, LuTriangleAlert, LuInfo, LuUser, LuSettings, LuCopy, LuLoader } from 'react-icons/lu';
+import '../../style/Chat.css';
 
 export default function Chat() {
   const [models, setModels] = useState([]);
@@ -87,75 +88,66 @@ export default function Chat() {
         const lang = match ? match[1] : '';
         const code = match ? match[2] : part.replace(/```/g, '');
         return (
-          <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', margin: '1rem 0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', background: 'var(--panel-bg)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          <div key={idx} className="code-block-wrapper">
+            <div className="code-block-header">
               <span>{lang || 'CODE'}</span>
               <button 
                 onClick={() => copyToClipboard(code.trim())}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}
+                className="code-block-copy"
               >
                 <LuCopy size={14} /> Copy
               </button>
             </div>
-            <pre style={{ margin: 0, padding: '1rem', background: 'var(--bg-color)', overflowX: 'auto', fontSize: '0.85rem', fontFamily: '"JetBrains Mono", monospace' }}>
+            <pre className="code-block-content">
               <code>{code.trim()}</code>
             </pre>
           </div>
         );
       }
-      return <p key={idx} style={{ margin: '0 0 0.5rem 0', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{part}</p>;
+      return <p key={idx} className="code-block-text">{part}</p>;
     });
   };
 
   return (
-    <div id="chat" className="section-content active" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div id="chat" className="section-content active chat-container">
       
       {/* Header matching the screenshot */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Interactive Chat Test</h2>
+      <header className="chat-header">
+        <div className="chat-header-left">
+          <h2 className="chat-title">Interactive Chat Test</h2>
           {ollamaOk ? (
-            <span className="badge badge-active" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}>● Connected</span>
+            <span className="badge badge-active chat-badge">● Connected</span>
           ) : (
-            <span className="badge" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: '#451a1a', color: '#fca5a5', border: '1px solid #7f1d1d' }}>● Disconnected</span>
+            <span className="badge chat-badge chat-badge-disconnected">● Disconnected</span>
           )}
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>MODEL:</span>
+        <div className="chat-header-right">
+          <div className="model-selector-wrapper">
+            <span className="model-selector-label">MODEL:</span>
             <select 
               value={selectedModel}
               onChange={(e) => {
                 setSelectedModel(e.target.value);
                 setOllamaOk(!e.target.value.startsWith('error:'));
               }}
-              style={{ 
-                padding: '0.35rem 0.75rem', 
-                background: 'var(--panel-bg)', 
-                border: '1px solid var(--border)', 
-                color: '#fff', 
-                borderRadius: 'var(--radius)',
-                fontSize: '0.85rem',
-                outline: 'none',
-                minWidth: '200px'
-              }}
+              className="model-selector"
             >
               {models.map((m, idx) => (
                 <option key={idx} value={m.id}>{m.id}</option>
               ))}
             </select>
           </div>
-          <LuSettings size={18} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+          <LuSettings size={18} className="settings-icon" />
         </div>
       </header>
 
       {/* Messages Area */}
-      <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingRight: '0.5rem' }}>
+      <div className="chat-messages chat-messages-area">
         
         {/* Persistent System Message */}
-        <div className="message system" style={{ display: 'flex', gap: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem', alignItems: 'center', background: 'transparent' }}>
-          <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--panel-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="message system msg-system">
+          <div className="msg-system-icon">
             <LuInfo size={14} />
           </div>
           <div>System initialized. Connected to model '{selectedModel || 'llama-3-8b-instruct'}' on Local Cluster Node 01.</div>
@@ -165,25 +157,25 @@ export default function Chat() {
         {messages.map((msg, idx) => {
           if (msg.role === 'user') {
             return (
-              <div key={idx} className="message user" style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
-                <div style={{ border: '1px solid var(--border)', padding: '1rem', borderRadius: 'var(--radius)', background: 'transparent', maxWidth: '85%', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              <div key={idx} className="message user msg-user-wrapper">
+                <div className="msg-user-content">
                   {msg.content}
                 </div>
-                <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div className="msg-user-icon">
                   <LuUser size={16} />
                 </div>
               </div>
             );
           } else {
             return (
-              <div key={idx} className="message assistant" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius)', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+              <div key={idx} className="message assistant msg-assistant-wrapper">
+                <div className="msg-assistant-icon">
                   <LuBot size={18} />
                 </div>
-                <div style={{ flex: 1, fontSize: '0.9rem', color: msg.error ? '#fca5a5' : '#fff' }}>
+                <div className={`msg-assistant-content ${msg.error ? 'msg-assistant-error' : ''}`}>
                   {renderContent(msg.content)}
                   {msg.usage && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    <div className="msg-metrics">
                       Tokens: {msg.usage.total_tokens} | Latencia: {msg.latency} ms
                     </div>
                   )}
@@ -194,12 +186,12 @@ export default function Chat() {
         })}
 
         {loading && (
-          <div className="message assistant" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius)', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+          <div className="message assistant msg-assistant-wrapper">
+            <div className="msg-assistant-icon">
               <LuBot size={18} />
             </div>
-            <div style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', height: '32px' }}>
-              <LuLoader className="spinner" size={16} style={{ animation: 'spin 2s linear infinite' }} /> 
+            <div className="msg-loading">
+              <LuLoader className="spinner" size={16} /> 
               Generando respuesta...
             </div>
           </div>
@@ -209,57 +201,24 @@ export default function Chat() {
       </div>
 
       {/* Input Area */}
-      <div className="chat-input" style={{ marginTop: '1.5rem', position: 'relative', flexShrink: 0 }}>
-        <form onSubmit={handleSubmit} style={{ margin: 0 }}>
+      <div className="chat-input-area">
+        <form onSubmit={handleSubmit} className="chat-form">
           <textarea 
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Escribe tu prompt de prueba aquí (Shift+Enter para nueva línea)..."
             disabled={loading || !ollamaOk}
-            style={{ 
-              width: '100%', 
-              background: 'var(--panel-bg)', 
-              border: '1px solid var(--border)', 
-              borderRadius: 'var(--radius)', 
-              padding: '1rem', 
-              paddingRight: '3rem',
-              color: '#fff', 
-              resize: 'none', 
-              height: '80px',
-              fontFamily: 'inherit',
-              fontSize: '0.9rem',
-              outline: 'none',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-            }}
+            className="chat-textarea"
           />
           <button 
             type="submit" 
             disabled={loading || !inputMessage.trim() || !ollamaOk} 
-            style={{ 
-              position: 'absolute', 
-              right: '1rem', 
-              bottom: '1rem', 
-              background: 'transparent', 
-              border: 'none', 
-              color: (inputMessage.trim() && !loading) ? 'var(--primary)' : 'var(--text-muted)', 
-              cursor: (inputMessage.trim() && !loading) ? 'pointer' : 'not-allowed',
-              transition: 'color 0.2s',
-              display: 'flex',
-              padding: '0.25rem'
-            }}
+            className={`chat-submit-btn ${(inputMessage.trim() && !loading) ? 'active' : 'disabled'}`}
           >
             <LuSend size={20} />
           </button>
         </form>
-        
-        {/* CSS for spinner animation */}
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
       </div>
     </div>
   );

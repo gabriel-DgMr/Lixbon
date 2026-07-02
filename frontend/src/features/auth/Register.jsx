@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { LuTerminal, LuUser, LuLock, LuArrowRight } from 'react-icons/lu';
-import './Auth.css';
+import '../../style/Auth.css';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -51,22 +51,21 @@ export default function Register() {
           <div className="auth-card-body">
             <div className="auth-header">
               <h2>Crear Cuenta</h2>
-              <p>Regístrate en LAN LLM Gateway</p>
+              <p>Regístrate en Folax DTC</p>
             </div>
             
             {error && (
-              <div className="error-box" style={{ fontSize: '0.85rem', padding: '0.75rem', marginBottom: '1rem', background: 'rgba(220, 38, 38, 0.1)', border: '1px solid rgba(220, 38, 38, 0.2)', color: '#f87171', borderRadius: '6px' }}>
+              <div className="error-box auth-error-box">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="success-box" style={{ fontSize: '0.85rem', padding: '0.75rem', marginBottom: '1rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#34d399', borderRadius: '6px' }}>
+              <div className="success-box auth-success-box">
                 {success}
               </div>
             )}
 
-            <div className="form-inner-box">
               <form id="registerForm" onSubmit={handleSubmit}>
                 <div className="input-group">
                   <div className="input-header">
@@ -125,13 +124,12 @@ export default function Register() {
                 </div>
                 
                 <button type="submit" className="submit-btn" disabled={loading}>
-                  {loading ? 'Procesando...' : 'Registrarse'} <LuArrowRight size={16} />
+                  {loading ? 'Procesando...' : 'Registrarse'}
                 </button>
               </form>
-            </div>
             
-            <div className="auth-links" style={{ marginTop: '1.5rem', textAlignment: 'center' }}>
-              ¿Ya tienes cuenta? <Link to="/login" style={{ color: '#6366f1', fontWeight: 600 }}>Inicia sesión</Link>
+            <div className="auth-links auth-links-group">
+              ¿Ya tienes cuenta? <Link to="/login" className="auth-link-highlight">Inicia sesión</Link>
             </div>
           </div>
         </div>

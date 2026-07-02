@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { LuServer, LuRefreshCw, LuCircleCheck, LuCircleAlert, LuTriangleAlert, LuCpu, LuActivity } from 'react-icons/lu';
+import { LuServer, LuRefreshCw, LuCircleCheck, LuCircleAlert, LuTriangleAlert, LuCpu, LuActivity, LuHardDrive } from 'react-icons/lu';
+import '../../style/Nodes.css';
 
 export default function Nodes() {
   const [nodes, setNodes] = useState([]);
@@ -42,34 +43,33 @@ export default function Nodes() {
   }, []);
 
   if (loading) {
-    return <div className="muted" style={{ padding: '2rem' }}>Cargando estado de los nodos...</div>;
+    return <div className="muted nodes-loading">Cargando estado de los nodos...</div>;
   }
 
   return (
     <div id="nodes" className="section-content active">
       <section className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="nodes-header-wrap">
           <div>
-            <h2><LuServer style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Active Nodes</h2>
-            <p className="muted" style={{ margin: 0 }}>
+            <h2><LuServer className="nodes-title-icon" /> Active Nodes</h2>
+            <p className="muted nodes-desc">
               Monitoring compute resources across local cluster.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div className="nodes-actions">
             <button 
               onClick={handleReloadConfig} 
               disabled={reloading}
-              className="secondary"
-              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+              className="secondary nodes-reload-btn"
             >
-              <LuRefreshCw style={{ width: '14px', marginRight: '4px', verticalAlign: 'middle' }} /> 
+              <LuRefreshCw className="nodes-reload-icon" /> 
               {reloading ? 'Recargando...' : 'Recargar Nodos.json'}
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="error-box" style={{ marginBottom: '1.5rem' }}>
+          <div className="error-box nodes-error-box">
             <LuTriangleAlert />
             <span>{error}</span>
           </div>
@@ -82,56 +82,95 @@ export default function Nodes() {
               const isCb = n.circuit_breaker ?? false;
               const isOnline = n.online ?? false;
               const modelos = n.modelos ?? [];
+              const metricas = n.metricas || {};
+              
+              const cpu = metricas.cpu_percent ?? 0;
+              const ram = metricas.ram_percent ?? 0;
+              const gpuFree = metricas.gpu_free_percent ?? 100;
+              const gpuUsed = 100 - gpuFree;
 
               return (
-                <div key={idx} className="quick-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', position: 'relative' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>
+                <div key={idx} className="quick-card node-card">
+                  <div className="node-card-header">
+                    <h3 className="node-name">
                       {n.name || n.id || `Nodo ${idx + 1}`}
                     </h3>
                     <span>
                       {isOnline ? (
-                        <span className="badge badge-ok" style={{ fontSize: '0.75rem' }}>
-                          <LuCircleCheck style={{ width: '12px', marginRight: '4px', verticalAlign: 'middle' }} /> Online
+                        <span className="badge badge-ok node-badge">
+                          <LuCircleCheck className="node-badge-icon" /> Online
                         </span>
                       ) : (
-                        <span className="badge badge-error" style={{ fontSize: '0.75rem' }}>
-                          <LuCircleAlert style={{ width: '12px', marginRight: '4px', verticalAlign: 'middle' }} /> Offline
+                        <span className="badge badge-error node-badge">
+                          <LuCircleAlert className="node-badge-icon" /> Offline
                         </span>
                       )}
                     </span>
                   </div>
 
-                  <p className="small muted" style={{ margin: 0 }}>
+                  <p className="small muted node-address">
                     Dirección: <code>{n.ollama_url}</code>
                   </p>
 
-                  <div className="stats-cards" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    <div className="stat-card" style={{ padding: '0.5rem', borderRadius: '6px' }}>
-                      <span style={{ fontSize: '0.75rem', marginBottom: '0.2rem' }}>Puntuación</span>
-                      <strong style={{ fontSize: '1.2rem' }}>{score}</strong>
+                  <div className="stats-cards node-stats">
+                    <div className="stat-card node-stat-card">
+                      <span className="node-stat-label">Puntuación</span>
+                      <strong className="node-stat-value">{score}</strong>
                     </div>
-                    <div className="stat-card" style={{ padding: '0.5rem', borderRadius: '6px' }}>
-                      <span style={{ fontSize: '0.75rem', marginBottom: '0.2rem' }}>Circuit Breaker</span>
-                      <strong style={{ fontSize: '1.2rem', color: isCb ? 'var(--error)' : 'var(--primary)' }}>
+                    <div className="stat-card node-stat-card">
+                      <span className="node-stat-label">Circuit Breaker</span>
+                      <strong className={`node-stat-value ${isCb ? 'node-cb-active' : 'node-cb-ok'}`}>
                         {isCb ? 'ACTIVO' : 'OK'}
                       </strong>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <span className="small font-medium" style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-muted)' }}>
+                  <div className="node-metrics">
+                    <div className="metric-item">
+                      <div className="metric-header">
+                        <span><LuCpu /> CPU</span>
+                        <span>{cpu.toFixed(1)}%</span>
+                      </div>
+                      <div className="progress-bar-bg">
+                        <div className="progress-bar-fill" style={{ width: `${Math.min(cpu, 100)}%`, backgroundColor: cpu > 85 ? '#ef4444' : 'var(--primary)' }}></div>
+                      </div>
+                    </div>
+                    
+                    <div className="metric-item">
+                      <div className="metric-header">
+                        <span><LuActivity /> RAM</span>
+                        <span>{ram.toFixed(1)}%</span>
+                      </div>
+                      <div className="progress-bar-bg">
+                        <div className="progress-bar-fill" style={{ width: `${Math.min(ram, 100)}%`, backgroundColor: ram > 85 ? '#ef4444' : 'var(--primary)' }}></div>
+                      </div>
+                    </div>
+
+                    {metricas.gpu_available && (
+                      <div className="metric-item">
+                        <div className="metric-header">
+                          <span><LuHardDrive /> GPU (Usada)</span>
+                          <span>{gpuUsed.toFixed(1)}%</span>
+                        </div>
+                        <div className="progress-bar-bg">
+                          <div className="progress-bar-fill" style={{ width: `${Math.min(gpuUsed, 100)}%`, backgroundColor: gpuUsed > 85 ? '#ef4444' : 'var(--primary)' }}></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="node-models-wrap">
+                    <span className="small font-medium node-models-label">
                       Modelos disponibles ({modelos.length}):
                     </span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    <div className="node-models-list">
                       {modelos.length > 0 ? (
                         modelos.map((m, mIdx) => (
                           <span 
                             key={mIdx} 
-                            className="badge" 
-                            style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', border: '1px solid var(--border)', fontSize: '0.7rem', padding: '0.15rem 0.4rem' }}
+                            className="badge node-model-badge"
                           >
-                            {m.id}
+                            {m}
                           </span>
                         ))
                       ) : (
@@ -143,7 +182,7 @@ export default function Nodes() {
               );
             })
           ) : (
-            <div className="muted text-center" style={{ gridColumn: 'span 2', padding: '2rem' }}>
+            <div className="muted text-center nodes-empty">
               No hay nodos del cluster configurados o activos en nodes.json.
             </div>
           )}

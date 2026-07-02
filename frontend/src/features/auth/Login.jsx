@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { LuTerminal, LuUser, LuLock, LuArrowRight } from 'react-icons/lu';
-import './Auth.css';
+import '../../style/Auth.css';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -39,16 +39,15 @@ export default function Login() {
           <div className="auth-card-body">
             <div className="auth-header">
               <h2>Bienvenido</h2>
-              <p>Acceso al Cluster Local</p>
+              <p>Acceso a Folax DTC</p>
             </div>
             
             {error && (
-              <div className="error-box" style={{ fontSize: '0.85rem', padding: '0.75rem', marginBottom: '1rem', background: 'rgba(220, 38, 38, 0.1)', border: '1px solid rgba(220, 38, 38, 0.2)', color: '#f87171', borderRadius: '6px' }}>
+              <div className="error-box auth-error-box">
                 {error}
               </div>
             )}
 
-            <div className="form-inner-box">
               <form id="loginForm" onSubmit={handleSubmit}>
                 <div className="input-group">
                   <div className="input-header">
@@ -88,14 +87,13 @@ export default function Login() {
                 </div>
                 
                 <button type="submit" className="submit-btn" disabled={loading}>
-                  {loading ? 'Verificando...' : 'Autenticar'} <LuArrowRight size={16} />
+                  {loading ? 'Iniciando Sesion' : 'Iniciar sesión'}
                 </button>
               </form>
-            </div>
             
-            <div className="auth-links flex flex-col gap-2" style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="auth-links flex flex-col gap-2 auth-links-group">
               <div>
-                ¿No tienes una cuenta? <Link to="/register" style={{ color: '#6366f1', fontWeight: 600 }}>Regístrate aquí</Link>
+                ¿No tienes una cuenta? <Link to="/register" className="auth-link-highlight">Regístrate aquí</Link>
               </div>
               <div>
                 ¿Problemas de conexión? <a href="#">Soporte Técnico</a>

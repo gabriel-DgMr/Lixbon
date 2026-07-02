@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { LuUsers } from 'react-icons/lu';
+import '../../style/Nodes.css';
 
 export default function Teams() {
   const [data, setData] = useState([]);
@@ -22,14 +23,14 @@ export default function Teams() {
   }, []);
 
   if (loading) {
-    return <div className="muted" style={{ padding: '2rem' }}>Cargando equipos...</div>;
+    return <div className="muted teams-loading">Cargando equipos...</div>;
   }
 
   return (
     <div id="clients" className="section-content active">
       <section className="panel">
-        <h2><LuUsers style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> Equipos conectados</h2>
-        <p className="muted" style={{ marginBottom: '1.5rem' }}>
+        <h2><LuUsers className="teams-title-icon" /> Equipos conectados</h2>
+        <p className="muted teams-desc">
           Métricas de uso segregadas por identificador de cliente (`client_id`).
         </p>
 
@@ -51,13 +52,13 @@ export default function Teams() {
                     <td><strong>{c.client_id}</strong></td>
                     <td>{c.conversations}</td>
                     <td>{c.messages}</td>
-                    <td><span style={{ color: 'var(--primary)', fontWeight: 600 }}>{c.total_tokens}</span></td>
+                    <td><span className="teams-tokens">{c.total_tokens}</span></td>
                     <td className="small muted">{c.last_activity || '-'}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={5} className="teams-empty">
                     Aún no hay métricas de equipos.
                   </td>
                 </tr>

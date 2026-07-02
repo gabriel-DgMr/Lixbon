@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { LuActivity, LuZap, LuChartBar, LuHistory, LuRefreshCw, LuTerminal, LuLayoutGrid, LuCircleCheck, LuCircleAlert } from 'react-icons/lu';
+import '../../style/Dashboard.css';
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -63,7 +64,7 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return <div className="muted" style={{ padding: '2rem' }}>Cargando resumen...</div>;
+    return <div className="muted dashboard-loading">Cargando resumen...</div>;
   }
 
   if (!data) {
@@ -76,7 +77,7 @@ export default function Dashboard() {
 
   return (
     <div id="overview" className="section-content active">
-      <section className="panel hero">
+      <section className="panel hero dashboard-hero">
         <div>
           <h2>System Overview</h2>
           <p className="muted">Real-time metrics and cluster performance</p>
@@ -85,11 +86,11 @@ export default function Dashboard() {
         <div className="hero-status">
           {!ollamaOk ? (
             <span className="badge badge-error">
-              <LuCircleAlert style={{ width: '14px', marginRight: '4px', verticalAlign: 'middle' }} /> Ollama no disponible
+              <LuCircleAlert className="icon-align" /> Ollama no disponible
             </span>
           ) : (
             <span className="badge badge-ok">
-              <LuCircleCheck style={{ width: '14px', marginRight: '4px', verticalAlign: 'middle' }} /> Ollama conectado
+              <LuCircleCheck className="icon-align" /> Ollama conectado
             </span>
           )}
         </div>
@@ -98,53 +99,45 @@ export default function Dashboard() {
       <section className="grid-2">
         <article className="quick-card">
           <h3>
-            <LuActivity style={{ width: '18px', display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> 
+            <LuActivity className="icon-align-md" /> 
             Estado del sistema
           </h3>
           <p id="sys-status" className="muted">{sysStatus}</p>
-          <p className="small muted" style={{ marginBottom: '1rem' }}>
-            Límite actual: <strong style={{ color: 'var(--primary)' }}>{rate_limit_per_min}</strong> req/min
+          <p className="small muted limit-text">
+            Límite actual: <strong className="limit-value">{rate_limit_per_min}</strong> req/min
           </p>
           <button onClick={() => { fetchDashboardData(); fetchStatus(); }} type="button" className="secondary">
-            <LuRefreshCw style={{ width: '16px', marginRight: '4px', verticalAlign: 'middle' }} /> Refrescar estado
+            <LuRefreshCw className="icon-align-sm" /> Refrescar estado
           </button>
         </article>
 
         <article className="quick-card">
           <h3>
-            <LuZap style={{ width: '18px', display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+            <LuZap className="icon-align-md" />
             Copiar Comando CLI
           </h3>
-          <p className="small muted" style={{ marginBottom: '0.75rem' }}>
+          <p className="small muted copy-desc">
             Copia el instalador y pégalo en la terminal del otro equipo para conectarlo a este Gateway.
           </p>
           <div className="btn-row">
             <button onClick={() => handleCopy(linuxCmd, 'linux')} type="button" className="secondary" title="Copia comando bash">
-              <LuTerminal style={{ width: '16px', marginRight: '4px', verticalAlign: 'middle' }} /> Linux/Mac
+              <LuTerminal className="icon-align-sm" /> Linux/Mac
             </button>
             <button onClick={() => handleCopy(winCmd, 'win')} type="button" className="secondary" title="Copia comando PowerShell">
-              <LuLayoutGrid style={{ width: '16px', marginRight: '4px', verticalAlign: 'middle' }} /> Windows
+              <LuLayoutGrid className="icon-align-sm" /> Windows
             </button>
           </div>
           <p 
             id="copy-feedback" 
-            className="small" 
-            style={{ 
-              marginTop: '0.5rem', 
-              textAlign: 'center', 
-              height: '16px', 
-              color: '#059669', 
-              fontWeight: 500, 
-              transition: 'opacity 0.3s', 
-              opacity: copyFeedback ? 1 : 0 
-            }}
+            className="small copy-feedback" 
+            style={{ opacity: copyFeedback ? 1 : 0 }}
           >
             {copyFeedback}
           </p>
         </article>
       </section>
 
-      <section className="panel" style={{ marginTop: '1.5rem' }}>
+      <section className="panel usage-panel">
         <h2><LuChartBar /> Uso acumulado</h2>
         <div className="stats-cards">
           <div className="stat-card">
@@ -186,7 +179,7 @@ export default function Dashboard() {
                 conversations.map((conv, idx) => (
                   <tr key={idx}>
                     <td>
-                      <span className="badge badge-ok" style={{ border: 'none' }}>
+                      <span className="badge badge-ok client-badge">
                         {conv.client_id || 'LAN'}
                       </span>
                     </td>

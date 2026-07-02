@@ -149,7 +149,7 @@ body {
 .side-nav a.active {
   background: #2a2a2c;
   color: var(--text-main);
-  border-right: 2px solid #5856D6;
+  border-left: 2px solid #5856D6;
 }
 
 .side-panel {
