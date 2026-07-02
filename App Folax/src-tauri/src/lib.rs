@@ -12,7 +12,7 @@ struct FileEntry {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn get_app_version() -> String {
-    "2.4.0".to_string()
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]

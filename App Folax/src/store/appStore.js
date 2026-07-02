@@ -15,8 +15,22 @@ export const useAppStore = create((set, get) => ({
   currentModel: localStorage.getItem('folax_current_model') || '',
   availableModels: [],
   latency: 0,
+  messages: JSON.parse(localStorage.getItem('folax_chat_messages') || 'null') || [
+    { role: 'system', content: 'Welcome to the Interactive CLI for FOLAX DTC. (TUI Mode)\nType /help to view the full list of available commands.', type: 'welcome' }
+  ],
   
   // Acciones
+  setMessages: (messages) => {
+    localStorage.setItem('folax_chat_messages', JSON.stringify(messages));
+    set({ messages });
+  },
+  
+  addMessage: (msg) => {
+    const updated = [...get().messages, msg];
+    localStorage.setItem('folax_chat_messages', JSON.stringify(updated));
+    set({ messages: updated });
+  },
+
   setServerUrl: (url) => {
     // Normalizar URL (quitar barra al final)
     const normalized = url.trim().replace(/\/+$/, '');

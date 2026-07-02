@@ -11,20 +11,41 @@ import('@tauri-apps/plugin-updater')
     console.warn('Tauri updater plugin not loaded:', err);
   });
 
+let invoke = null;
+import('@tauri-apps/api/core')
+  .then(m => {
+    invoke = m.invoke;
+  })
+  .catch(err => {
+    console.warn('Tauri core plugin invoke not loaded:', err);
+  });
+
 export function useVersion() {
   const { serverUrl, connectionStatus } = useAppStore();
-  const [currentVersion, setCurrentVersion] = useState('2.4.0');
+  const [currentVersion, setCurrentVersion] = useState('0.1.0');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+
+  const fetchTauriVersion = async () => {
+    if (invoke) {
+      try {
+        const v = await invoke('get_app_version');
+        setCurrentVersion(v);
+        return v;
+      } catch (e) {
+        console.error('[updater] Error obteniendo versión de Rust:', e);
+      }
+    }
+    return currentVersion;
+  };
 
   const checkForUpdates = async () => {
     if (!serverUrl || connectionStatus !== 'connected') return;
 
     try {
-      // 1. Preguntar al servidor local la versión instalada (o usar la estática de Rust)
-      const current = '2.4.0';
-      setCurrentVersion(current);
+      // 1. Preguntar al backend de Rust la versión instalada real
+      const current = await fetchTauriVersion();
 
       // 2. Comprobar contra el endpoint del servidor si hay actualización
       const res = await api.get(`/api/updates/check?v=${current}`);
@@ -74,6 +95,10 @@ export function useVersion() {
       alert('Error en la descarga: ' + error.message);
     }
   };
+
+  useEffect(() => {
+    fetchTauriVersion();
+  }, [invoke]);
 
   useEffect(() => {
     checkForUpdates();

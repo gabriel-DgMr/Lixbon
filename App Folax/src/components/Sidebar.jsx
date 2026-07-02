@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../store/appStore';
+import { useVersion } from '../hooks/useVersion';
 import { 
   LuTerminal, 
   LuTrendingUp, 
@@ -14,6 +15,7 @@ import {
 
 export function Sidebar() {
   const { activeSection, setActiveSection, connectionStatus, user, logout } = useAppStore();
+  const { currentVersion } = useVersion();
 
   const menuItems = [
     { id: 'terminal', label: 'TERMINAL', icon: LuTerminal },
@@ -30,7 +32,7 @@ export function Sidebar() {
         <div className="brand-section">
           <div className="brand-title">FOLAX DTC</div>
           <div className="brand-sub">
-            <span className="dot"></span> V2.4.0 CLUSTER_ID:090
+            <span className="dot"></span> v{currentVersion} CLUSTER_ID:090
           </div>
         </div>
 

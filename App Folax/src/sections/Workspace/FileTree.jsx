@@ -35,12 +35,27 @@ export function FileTree({ onSelectFile, activeFilePath }) {
   const loadRoot = async () => {
     if (!invoke) return;
     try {
-      const root = await invoke('get_workspace_root');
+      const savedRoot = localStorage.getItem('folax_workspace_root');
+      let root = savedRoot;
+      if (!root) {
+        root = await invoke('get_workspace_root');
+      }
       setRootPath(root);
       const entries = await invoke('read_dir', { path: root });
       setTreeData(entries);
     } catch (e) {
       console.error('[filetree] Error cargando raíz:', e);
+    }
+  };
+
+  const handlePathChange = async () => {
+    if (!rootPath.trim() || !invoke) return;
+    try {
+      const entries = await invoke('read_dir', { path: rootPath.trim() });
+      setTreeData(entries);
+      localStorage.setItem('folax_workspace_root', rootPath.trim());
+    } catch (e) {
+      alert('Error abriendo el directorio: ' + e);
     }
   };
 
@@ -240,6 +255,20 @@ export function FileTree({ onSelectFile, activeFilePath }) {
         </div>
       </div>
 
+      <div className="workspace-path-bar flex align-center gap-2">
+        <input 
+          type="text" 
+          value={rootPath} 
+          onChange={(e) => setRootPath(e.target.value)} 
+          onKeyDown={(e) => e.key === 'Enter' && handlePathChange()}
+          placeholder="Ruta del workspace (ej: C:\Proyectos)"
+          className="workspace-path-input font-mono"
+        />
+        <button onClick={handlePathChange} className="workspace-path-btn font-mono">
+          Abrir
+        </button>
+      </div>
+
       <div className="tree-workspace-title flex align-center font-mono">
         <LuChevronDown size={14} />
         <span>LLM-DATACENT (WORKSPACE)</span>
@@ -283,6 +312,45 @@ export function FileTree({ onSelectFile, activeFilePath }) {
         .tree-header {
           padding: 10px 16px;
           border-bottom: 1px solid var(--border);
+        }
+        .workspace-path-bar {
+          display: flex;
+          gap: 6px;
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--border);
+        }
+        .workspace-path-input {
+          flex: 1;
+          background-color: rgba(255, 255, 255, 0.05);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: #fff;
+          font-size: 0.75rem;
+          padding: 4px 8px;
+          outline: none;
+          min-width: 0;
+          transition: border-color 0.2s;
+        }
+        .workspace-path-input:focus {
+          border-color: var(--accent);
+        }
+        .light-theme .workspace-path-input {
+          color: var(--text-primary);
+          background-color: rgba(0, 0, 0, 0.02);
+        }
+        .workspace-path-btn {
+          background-color: var(--accent);
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          padding: 4px 10px;
+          cursor: pointer;
+          transition: filter 0.2s;
+        }
+        .workspace-path-btn:hover {
+          filter: brightness(1.1);
         }
         .tree-header .title {
           font-size: 0.75rem;

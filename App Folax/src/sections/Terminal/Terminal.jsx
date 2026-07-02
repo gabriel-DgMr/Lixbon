@@ -6,10 +6,15 @@ import { MessageFeed } from './MessageFeed';
 import { LuFileText, LuActivity } from 'react-icons/lu';
 
 export function Terminal({ activeTab }) {
-  const { currentModel, setCurrentModel, availableModels, setAvailableModels, apiKey } = useAppStore();
-  const [messages, setMessages] = useState([
-    { role: 'system', content: 'Welcome to the Interactive CLI for FOLAX DTC. (TUI Mode)\nType /help to view the full list of available commands.', type: 'welcome' }
-  ]);
+  const { 
+    currentModel, 
+    setCurrentModel, 
+    availableModels, 
+    setAvailableModels, 
+    apiKey,
+    messages,
+    setMessages
+  } = useAppStore();
   const [logs, setLogs] = useState([]);
   const [auditLimit, setAuditLimit] = useState(30);
   const [recentConvs, setRecentConvs] = useState([]);
@@ -73,7 +78,7 @@ export function Terminal({ activeTab }) {
       window.removeEventListener('new-session-click', handleNewSession);
       window.removeEventListener('clear-terminal-click', handleClearTerminal);
     };
-  }, []);
+  }, [setMessages]);
 
   // Cargar datos según pestaña
   useEffect(() => {
@@ -91,7 +96,8 @@ export function Terminal({ activeTab }) {
 
     // Agregar el mensaje del usuario
     const userMsg = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setIsLoading(true);
 
     // Si es un comando de tipo barra (ej. /model o /help)
@@ -102,7 +108,7 @@ export function Terminal({ activeTab }) {
 
       if (cmd === '/help') {
         setTimeout(() => {
-          setMessages(prev => [...prev, {
+          setMessages([...updatedMessages, {
             role: 'system',
             content: 'Comandos Disponibles:\n  /model <nombre> - Cambia el modelo activo\n  /clear          - Limpia la pantalla\n  /info           - Muestra estado actual del cluster\n  /help           - Muestra esta lista',
             type: 'info'
@@ -120,7 +126,7 @@ export function Terminal({ activeTab }) {
 
       if (cmd === '/model') {
         if (!arg) {
-          setMessages(prev => [...prev, {
+          setMessages([...updatedMessages, {
             role: 'system',
             content: `Modelo activo: ${currentModel || 'Ninguno'}. Modelos disponibles:\n` + 
                      availableModels.map(m => ` - ${m.id}`).join('\n'),
@@ -130,13 +136,13 @@ export function Terminal({ activeTab }) {
           const match = availableModels.find(m => m.id.toLowerCase().includes(arg.toLowerCase()));
           if (match) {
             setCurrentModel(match.id);
-            setMessages(prev => [...prev, {
+            setMessages([...updatedMessages, {
               role: 'system',
               content: `[OK] Modelo cambiado correctamente a: ${match.id}`,
               type: 'ok'
             }]);
           } else {
-            setMessages(prev => [...prev, {
+            setMessages([...updatedMessages, {
               role: 'system',
               content: `[ERROR] Modelo "${arg}" no encontrado.`,
               type: 'error'
@@ -155,13 +161,13 @@ export function Terminal({ activeTab }) {
         message: text
       });
 
-      if (res && res.response) {
-        setMessages(prev => [...prev, { role: 'assistant', content: res.response }]);
+      if (res && res.message) {
+        setMessages([...updatedMessages, { role: 'assistant', content: res.message }]);
       } else {
-        setMessages(prev => [...prev, { role: 'system', content: '[OK] Mensaje registrado en el clúster.', type: 'ok' }]);
+        setMessages([...updatedMessages, { role: 'system', content: '[OK] Mensaje registrado en el clúster.', type: 'ok' }]);
       }
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'system', content: `[ERROR] Fallo en la comunicación: ${e.message}`, type: 'error' }]);
+      setMessages([...updatedMessages, { role: 'system', content: `[ERROR] Fallo en la comunicación: ${e.message}`, type: 'error' }]);
     } finally {
       setIsLoading(false);
     }

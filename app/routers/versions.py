@@ -156,7 +156,7 @@ async def api_upload_version(
     }
 
 
-@router.get("/releases", response_class=HTMLResponse)
+@router.get("/releases-info", response_class=HTMLResponse)
 async def releases_page():
     """Página pública de notas de versiones."""
     all_versions = db.get_all_versions()
