@@ -88,11 +88,14 @@ export function useVersion() {
               break;
           }
         });
+      } else {
+        setIsDownloading(false);
+        alert('No se detectó la actualización al intentar instalar. Verifica que la versión sea superior a la actual.');
       }
     } catch (error) {
       console.error('[updater] Error instalando actualización:', error);
       setIsDownloading(false);
-      alert('Error en la descarga: ' + error.message);
+      alert('Error al instalar la actualización. Es posible que el archivo esté corrupto o que la firma (.sig) sea inválida. Detalle: ' + error.message);
     }
   };
 

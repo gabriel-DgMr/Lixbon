@@ -19,7 +19,19 @@ export const useAppStore = create((set, get) => ({
     { role: 'system', content: 'Welcome to the Interactive CLI for FOLAX DTC. (TUI Mode)\nType /help to view the full list of available commands.', type: 'welcome' }
   ],
   
+  // UI States para Layout OpenCode-like
+  isWorkspaceVisible: localStorage.getItem('folax_workspace_visible') === 'true' || false,
+  activeFile: null, // { path, name, content }
+
   // Acciones
+  toggleWorkspace: () => {
+    const newVal = !get().isWorkspaceVisible;
+    localStorage.setItem('folax_workspace_visible', newVal.toString());
+    set({ isWorkspaceVisible: newVal });
+  },
+
+  setActiveFile: (file) => set({ activeFile: file }),
+
   setMessages: (messages) => {
     localStorage.setItem('folax_chat_messages', JSON.stringify(messages));
     set({ messages });

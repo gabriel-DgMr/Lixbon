@@ -162,6 +162,24 @@ input, button, textarea {
   overflow: hidden;
 }
 
+.filetree-sidebar-wrapper {
+  width: 260px;
+  min-width: 200px;
+  max-width: 400px;
+  border-right: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Adjustments for FileTree when used as a sidebar */
+.filetree-sidebar-wrapper .file-tree-container {
+  border-right: none;
+  width: 100%;
+}
+
 .section-container {
   flex: 1;
   padding: 24px;

@@ -841,7 +841,7 @@ def get_latest_version(channel: str = "stable") -> dict[str, Any] | None:
     with get_conn() as conn:
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT * FROM app_versions WHERE channel = %s ORDER BY release_date DESC LIMIT 1",
+            "SELECT * FROM app_versions WHERE channel = %s ORDER BY id DESC LIMIT 1",
             (channel,)
         )
         row = cursor.fetchone()

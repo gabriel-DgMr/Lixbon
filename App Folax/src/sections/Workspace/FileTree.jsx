@@ -11,7 +11,7 @@ import {
   LuChevronDown
 } from 'react-icons/lu';
 
-// Importación dinámica de Tauri invoke
+// Importación dinámica de Tauri invoke y dialog
 let invoke = null;
 import('@tauri-apps/api/core')
   .then(m => {
@@ -19,6 +19,15 @@ import('@tauri-apps/api/core')
   })
   .catch(err => {
     console.warn('Tauri invoke not loaded:', err);
+  });
+
+let openDialog = null;
+import('@tauri-apps/plugin-dialog')
+  .then(m => {
+    openDialog = m.open;
+  })
+  .catch(err => {
+    console.warn('Tauri dialog plugin not loaded:', err);
   });
 
 export function FileTree({ onSelectFile, activeFilePath }) {
@@ -56,6 +65,30 @@ export function FileTree({ onSelectFile, activeFilePath }) {
       localStorage.setItem('folax_workspace_root', rootPath.trim());
     } catch (e) {
       alert('Error abriendo el directorio: ' + e);
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    if (!openDialog) {
+      alert("El plugin de diálogo no está disponible.");
+      return;
+    }
+    try {
+      const selectedPath = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Seleccionar Workspace"
+      });
+      if (selectedPath) {
+        setRootPath(selectedPath);
+        if (invoke) {
+          const entries = await invoke('read_dir', { path: selectedPath });
+          setTreeData(entries);
+          localStorage.setItem('folax_workspace_root', selectedPath);
+        }
+      }
+    } catch (e) {
+      console.error("[filetree] Error abriendo diálogo:", e);
     }
   };
 
@@ -256,6 +289,9 @@ export function FileTree({ onSelectFile, activeFilePath }) {
       </div>
 
       <div className="workspace-path-bar flex align-center gap-2">
+        <button onClick={handleOpenFolder} title="Seleccionar Carpeta" className="header-btn" style={{ padding: '6px' }}>
+          <LuFolderOpen size={16} />
+        </button>
         <input 
           type="text" 
           value={rootPath} 
@@ -304,9 +340,8 @@ export function FileTree({ onSelectFile, activeFilePath }) {
 
       <style dangerouslySetInnerHTML={{ __html: `
         .filetree-sidebar {
-          width: 260px;
+          width: 100%;
           background-color: var(--bg-tree, #0f0f11);
-          border-right: 1px solid var(--border);
           height: 100%;
         }
         .tree-header {

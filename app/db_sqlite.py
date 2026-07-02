@@ -884,7 +884,7 @@ def get_all_versions() -> list[dict[str, Any]]:
 def get_latest_version(channel: str = "stable") -> dict[str, Any] | None:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT id, version, channel, release_date, title, changelog_json, download_url, checksum_sha256, created_at FROM app_versions WHERE channel = ? ORDER BY release_date DESC LIMIT 1",
+            "SELECT id, version, channel, release_date, title, changelog_json, download_url, checksum_sha256, created_at FROM app_versions WHERE channel = ? ORDER BY id DESC LIMIT 1",
             (channel,)
         ).fetchone()
     if row:

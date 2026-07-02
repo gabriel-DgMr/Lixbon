@@ -30,7 +30,7 @@ export function Sidebar() {
     <div className="sidebar flex flex-col justify-between">
       <div className="flex flex-col">
         <div className="brand-section">
-          <div className="brand-title">FOLAX DTC</div>
+          <div className="brand-title">FOLAX IDE</div>
           <div className="brand-sub">
             <span className="dot"></span> v{currentVersion} CLUSTER_ID:090
           </div>
@@ -39,7 +39,22 @@ export function Sidebar() {
         <nav className="nav-menu">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeSection === item.id;
+            
+            if (item.id === 'workspace') {
+              const isActive = useAppStore.getState().isWorkspaceVisible;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => useAppStore.getState().toggleWorkspace()}
+                  className={`nav-item flex align-center gap-2 ${isActive ? 'active' : ''}`}
+                >
+                  <Icon size={16} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            }
+
+            const isActive = activeSection === item.id || (item.id === 'terminal' && activeSection === 'editor');
             return (
               <button
                 key={item.id}
@@ -133,7 +148,7 @@ export function Sidebar() {
         }
         .nav-item {
           padding: 12px 16px;
-          border-radius: 6px;
+          border-radius: 2px;
           font-size: 0.85rem;
           font-weight: 500;
           color: var(--text-secondary);
