@@ -32,6 +32,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./App Folax/src-tauri -> target"
+
       - name: Install dependencies
         run: |
           cd "App Folax"
@@ -41,6 +46,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: "***REMOVED-OLD-TAURI-KEY***"
         with:
           tagName: app-folax-v__VERSION__
           releaseName: 'App Folax v__VERSION__'

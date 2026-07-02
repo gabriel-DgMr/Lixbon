@@ -4,13 +4,13 @@ import { CodeEditor } from './CodeEditor';
 
 // Importación dinámica de Tauri invoke
 let invoke = null;
-try {
-  import('@tauri-apps/api/core').then(m => {
+import('@tauri-apps/api/core')
+  .then(m => {
     invoke = m.invoke;
+  })
+  .catch(err => {
+    console.warn('Tauri invoke not loaded:', err);
   });
-} catch (e) {
-  // No estamos en Tauri
-}
 
 export function Workspace() {
   const [activeFile, setActiveFile] = useState({

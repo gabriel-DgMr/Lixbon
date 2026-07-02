@@ -3,13 +3,13 @@ import { useAppStore } from '../store/appStore';
 import { api } from '../lib/api';
 // Importación dinámica de Tauri para evitar errores fuera de Tauri (por ejemplo, en navegador)
 let tauriUpdater = null;
-try {
-  import('@tauri-apps/plugin-updater').then(m => {
+import('@tauri-apps/plugin-updater')
+  .then(m => {
     tauriUpdater = m;
+  })
+  .catch(err => {
+    console.warn('Tauri updater plugin not loaded:', err);
   });
-} catch (e) {
-  // No estamos en Tauri
-}
 
 export function useVersion() {
   const { serverUrl, connectionStatus } = useAppStore();

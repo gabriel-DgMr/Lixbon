@@ -129,8 +129,7 @@ export default function Releases() {
                   <div className="flex justify-end">
                     <a 
                       href={downloadLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      download={`app-folax-${v.version}-${v.channel}.msi`}
                       className="button"
                       style={{
                         textDecoration: 'none',

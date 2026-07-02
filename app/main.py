@@ -5,6 +5,7 @@ Configura la app FastAPI, middlewares, ciclo de vida y registra todos los router
 from __future__ import annotations
 import threading
 import time
+import mimetypes
 
 import httpx
 from fastapi import FastAPI
@@ -56,6 +57,7 @@ app.include_router(admin.router)   # Incluir último: tiene GET "/" (dashboard)
 @app.on_event("startup")
 async def on_startup() -> None:
     """Inicializa BD, clientes HTTP y el orquestador de nodos."""
+    mimetypes.add_type('application/x-msi', '.msi')
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     versions.sync_versions_to_db()
